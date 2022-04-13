@@ -1,0 +1,5 @@
+numpy
+torch==1.7.0
+transformers==4.17.0
+seqeval
+allennlp
