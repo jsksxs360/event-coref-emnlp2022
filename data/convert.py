@@ -8,9 +8,14 @@ import logging
 import json
 import numpy as np
 from itertools import combinations
-import sys
-sys.path.append('../')
-from data.utils import print_data_statistic, filter_events, check_event_conflict
+import argparse
+from .utils import print_data_statistic, filter_events, check_event_conflict
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument("--kbp_data_dir", default='LDC_TAC_KBP/', type=str)
+parser.add_argument("--sent_data_dir", default='', type=str)
+args = parser.parse_args()
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -21,18 +26,18 @@ logger = logging.getLogger("Convert")
 SENT_FILE = 'kbp_sent.txt'
 DATA_DIRS = {
     '2015': [
-        'LDC_TAC_KBP/LDC2015E29/data/ere/mpdfxml', 
-        'LDC_TAC_KBP/LDC2015E68/data/ere', 
-        'LDC_TAC_KBP/LDC2017E02/data/2015/training/event_hopper', 
-        'LDC_TAC_KBP/LDC2017E02/data/2015/eval/hopper'
+        'LDC2015E29/data/ere/mpdfxml', 
+        'LDC2015E68/data/ere', 
+        'LDC2017E02/data/2015/training/event_hopper', 
+        'LDC2017E02/data/2015/eval/hopper'
     ],
     '2016': [
-        'LDC_TAC_KBP/LDC2017E02/data/2016/eval/eng/nw/ere', 
-        'LDC_TAC_KBP/LDC2017E02/data/2016/eval/eng/df/ere'
+        'LDC2017E02/data/2016/eval/eng/nw/ere', 
+        'LDC2017E02/data/2016/eval/eng/df/ere'
     ],
     '2017': [
-        'LDC_TAC_KBP/LDC2017E54/data/eng/nw/ere', 
-        'LDC_TAC_KBP/LDC2017E54/data/eng/df/ere'
+        'LDC2017E54/data/eng/nw/ere', 
+        'LDC2017E54/data/eng/df/ere'
     ]
 }
 
@@ -67,7 +72,7 @@ def get_KBP_filenames(version:str) -> List[Filename]:
             Filename(
                 re.sub('\.event_hoppers\.xml|\.rich_ere\.xml', '', filename), 
                 os.path.join(folder, filename)
-            ) for filename in os.listdir(folder)
+            ) for filename in os.listdir(os.path.join(args.kbp_data_dir, folder))
         ]
     return filename_list
 
@@ -188,7 +193,7 @@ def split_dev(doc_list:list, valid_doc_num:int, valid_event_num:int, valid_chain
 
 if __name__ == "__main__":
     docs = collections.defaultdict(list)
-    kbp_sent_list = get_KBP_sents(SENT_FILE)
+    kbp_sent_list = get_KBP_sents(os.path.join(args.sent_data_dir, SENT_FILE))
     for dataset in ['2015', '2016', '2017']:
         logger.info(f"parsing xml files in KBP {dataset} ...")
         for filename in get_KBP_filenames(dataset):

@@ -60,9 +60,10 @@ Dataset Statistics:
    ```
    cd data/
    export DATA_DIR=<ldc_tac_kbp_data_dir>
-   python convert.py
+   python3 convert.py --kbp_data_dir $DATA_DIR
    ```
 
-   Note: this script will create `train.json`、`dev.json` and `test.json` in the *data* folder.
+   Note: this script will create `train.json`、`dev.json` and `test.json` in the *data* folder, as well as `train_filtered.json`、`dev_filtered.json` and `test.json` which filter same and overlapping events.
 
 ## Training
+
