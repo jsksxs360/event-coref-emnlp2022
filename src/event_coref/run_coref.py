@@ -115,7 +115,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
     logger.info("Done!")
     return save_weights
 
-def predict(args, document:str, events:list, tokenizer, model):
+def predict(args, document:str, events:list, model, tokenizer):
     '''
     # Args:
         - events: [
@@ -167,7 +167,7 @@ def test(args, test_dataset, model, tokenizer, save_weights:list):
         for sample in tqdm(test_dataset):
             events = [[char_start, char_end] for _, char_start, char_end, _, _ in sample['events']]
             event_cluster_dic = {char_start:cluster_id for _, char_start, _, _, cluster_id in sample['events']}
-            new_events, predictions, probabilities = predict(args, sample['document'], events, tokenizer, model)
+            new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
             results.append({
                 "doc_id": sample['id'], 
                 "document": sample['document'], 

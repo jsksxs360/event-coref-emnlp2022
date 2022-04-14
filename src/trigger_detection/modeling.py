@@ -55,5 +55,5 @@ class LongformerCrfForTD(LongformerPreTrainedModel):
 
         loss = None
         if labels:
-            loss = -1 * self.crf(emissions = logits, tags=labels, mask=attention_mask)
+            loss = -1 * self.crf(emissions=logits, tags=labels, mask=attention_mask)
         return loss, logits

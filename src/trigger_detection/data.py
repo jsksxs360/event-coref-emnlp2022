@@ -18,8 +18,10 @@ class KBPTrigger(Dataset):
         with open(data_file, 'rt', encoding='utf-8') as f:
             for line in f:
                 sample = json.loads(line.strip())
-                tags = [(event['start'], event['start']+len(event['trigger'])-1, event['trigger'], event['subtype']) 
-                            for event in sample['events'] if event['subtype'] in categories]
+                tags = [
+                    (event['start'], event['start'] + len(event['trigger']) - 1, event['trigger'], event['subtype']) 
+                    for event in sample['events'] if event['subtype'] in categories
+                ]
                 Data.append({
                     'id': sample['doc_id'], 
                     'document': sample['document'], 
@@ -53,10 +55,10 @@ def get_dataLoader(args, dataset, tokenizer, batch_size=None, shuffle=False):
             for char_start, char_end, _, tag in batch_tags[s_idx]:
                 token_start = encoding.char_to_token(char_start)
                 token_end = encoding.char_to_token(char_end)
-                if not token_end:
+                if not token_start or not token_end:
                     continue
                 batch_label[s_idx][token_start] = args.label2id[f"B-{tag}"]
-                batch_label[s_idx][token_start+1:token_end+1] = args.label2id[f"I-{tag}"]
+                batch_label[s_idx][token_start + 1:token_end + 1] = args.label2id[f"I-{tag}"]
         batch_inputs['labels'] = torch.tensor(batch_label)
         return batch_inputs
     

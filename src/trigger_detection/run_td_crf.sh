@@ -11,8 +11,9 @@ python3 run_td_crf.py \
     --max_seq_length=4096 \
     --learning_rate=1e-5 \
     --crf_learning_rate=5e-5 \
-    --num_train_epochs=10 \
+    --num_train_epochs=50 \
     --batch_size=1 \
     --do_train \
+    --do_test \
     --warmup_proportion=0. \
     --seed=42

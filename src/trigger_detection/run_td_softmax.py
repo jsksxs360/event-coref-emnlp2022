@@ -8,15 +8,17 @@ from transformers import AutoConfig, AutoTokenizer
 from transformers import AdamW, get_scheduler
 from seqeval.metrics import classification_report
 from seqeval.scheme import IOB2
-from .data import KBPTrigger, get_dataLoader
-from .modeling import LongformerSoftmaxForTD
-from .arg import parse_args
-from ..tools import seed_everything, NpEncoder
+import sys
+sys.path.append('../../')
+from src.trigger_detection.data import KBPTrigger, get_dataLoader
+from src.trigger_detection.modeling import LongformerSoftmaxForTD
+from src.trigger_detection.arg import parse_args
+from src.tools import seed_everything, NpEncoder
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
                     level=logging.INFO)
-logger = logging.getLogger("TD Softmax")
+logger = logging.getLogger("Model")
 
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))
@@ -46,25 +48,19 @@ def test_loop(args, dataloader, model):
         for batch_data in tqdm(dataloader):
             batch_data = batch_data.to(args.device)
             outputs = model(**batch_data)
-            pred = outputs[1]
-            predictions = pred.argmax(dim=-1).cpu().numpy() # [batch, seq]
-            y = batch_data['labels'].cpu().numpy()
+            logits = outputs[1]
+            predictions = logits.argmax(dim=-1).cpu().numpy() # [batch, seq]
+            labels = batch_data['labels'].cpu().numpy()
             lens = np.sum(batch_data['attention_mask'].cpu().numpy(), axis=-1)
             true_labels += [
                 [args.id2label[int(l)] for idx, l in enumerate(label) if idx > 0 and idx < seq_len - 1] 
-                for label, seq_len in zip(y, lens)
+                for label, seq_len in zip(labels, lens)
             ]
             true_predictions += [
                 [args.id2label[int(p)] for idx, p in enumerate(prediction) if idx > 0 and idx < seq_len - 1]
                 for prediction, seq_len in zip(predictions, lens)
             ]
-    return classification_report(
-        true_labels, 
-        true_predictions, 
-        mode='strict', 
-        scheme=IOB2, 
-        output_dict=True
-    )
+    return classification_report(true_labels, true_predictions, mode='strict', scheme=IOB2, output_dict=True)
 
 def train(args, train_dataset, dev_dataset, model, tokenizer):
     """ Train the model """
@@ -112,17 +108,14 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             best_f1 = dev_f1
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
-            torch.save(
-                model.state_dict(), 
-                os.path.join(args.output_dir, save_weight)
-            )
+            torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
             save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")
     return save_weights
 
-def predict(args, document:str, tokenizer, model):
+def predict(args, document:str, model, tokenizer):
     inputs = tokenizer(
         document, 
         max_length=args.max_seq_length, 
@@ -133,9 +126,10 @@ def predict(args, document:str, tokenizer, model):
     offsets = inputs.pop('offset_mapping').squeeze(0)
     inputs = inputs.to(args.device)
     with torch.no_grad():
-        pred = model(**inputs)[1] # logits
-    probabilities = torch.nn.functional.softmax(pred, dim=-1)[0].cpu().numpy().tolist()
-    predictions = pred.argmax(dim=-1)[0].cpu().numpy().tolist()
+        outputs = model(**inputs)
+        logits = outputs[1]
+    probabilities = torch.nn.functional.softmax(logits, dim=-1)[0].cpu().numpy().tolist()
+    predictions = logits.argmax(dim=-1)[0].cpu().numpy().tolist()
 
     pred_label = []
     idx = 1
@@ -167,9 +161,8 @@ def predict(args, document:str, tokenizer, model):
         idx += 1
     return pred_label
 
-def test(args, test_dataset, tokenizer, model, save_weights:list=None):
+def test(args, test_dataset, model, tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(args, test_dataset, tokenizer, batch_size=1, shuffle=False)
-    save_weights = save_weights if save_weights else args.save_weights
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
         logger.info(f'loading weights from {save_weight}...')
@@ -181,7 +174,7 @@ def test(args, test_dataset, tokenizer, model, save_weights:list=None):
         results = []
         model.eval()
         for sample in tqdm(test_dataset):
-            pred_label = predict(args, sample['document'], tokenizer, model)
+            pred_label = predict(args, sample['document'], model, tokenizer)
             results.append({
                     "doc_id": sample['id'], 
                     "document": sample['document'], 
@@ -216,6 +209,7 @@ if __name__ == '__main__':
         args.id2label[len(args.id2label)] = f"I-{c}"
     args.label2id = {v: k for k, v in args.id2label.items()}
     # Load pretrained model and tokenizer
+    logger.info(f'loading pretrained model and tokenizer of {args.model_checkpoint} ...')
     config = AutoConfig.from_pretrained(
         args.model_checkpoint, 
         cache_dir=args.cache_dir, 
@@ -229,13 +223,14 @@ if __name__ == '__main__':
         cache_dir=args.cache_dir
     ).to(args.device)
     # Training
+    save_weights = []
     if args.do_train:
         logger.info(f'Training/evaluation parameters: {args}')
         train_dataset = KBPTrigger(args.train_file)
         dev_dataset = KBPTrigger(args.dev_file)
-        args.save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
+        save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
     # Testing
     if args.do_test:
         test_dataset = KBPTrigger(args.test_file)
-        test(args, test_dataset, tokenizer, model)
+        test(args, test_dataset, model, tokenizer, save_weights)
         
