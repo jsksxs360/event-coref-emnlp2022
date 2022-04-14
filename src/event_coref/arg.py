@@ -35,7 +35,6 @@ def parse_args():
         default=1e-5, type=float, 
         help="The initial learning rate for Adam."
     )
-    parser.add_argument("--dropout_prob", default=0.3, type=float)
     parser.add_argument("--adam_beta1", default=0.9, type=float,
         help="Epsilon for Adam optimizer."
     )

@@ -11,7 +11,7 @@ python3 run_coref.py \
     --max_seq_length=4096 \
     --learning_rate=1e-5 \
     --softmax_loss=ce \
-    --num_train_epochs=3 \
+    --num_train_epochs=50 \
     --batch_size=1 \
     --do_train \
     --do_test \

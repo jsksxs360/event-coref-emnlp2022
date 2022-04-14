@@ -1,5 +1,4 @@
 import os
-import sys
 import logging
 import torch
 import json
@@ -8,6 +7,7 @@ from transformers import AutoConfig, AutoTokenizer
 from transformers import AdamW, get_scheduler
 import numpy as np
 from sklearn.metrics import classification_report
+import sys
 sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
 from src.event_coref.arg import parse_args
@@ -31,12 +31,13 @@ def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_lo
         outputs = model(**batch_data)
         loss = outputs[0]
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        lr_scheduler.step()
+        if loss:
+            optimizer.zero_grad()
+            loss.backward() 
+            optimizer.step()
+            lr_scheduler.step()
 
-        total_loss += loss.item()
+        total_loss += loss.item() if loss else 0.
         progress_bar.set_description(f'loss: {total_loss/(finish_step_num + step):>7f}')
         progress_bar.update(1)
     return total_loss
@@ -45,12 +46,13 @@ def test_loop(args, dataloader, model):
     true_labels, true_predictions = [], []
     model.eval()
     with torch.no_grad():
+        no_tensor = ['batch_events', 'batch_event_cluster_ids']
         for batch_data in tqdm(dataloader):
-            no_tensor = ['batch_events', 'batch_event_cluster_ids']
             batch_data = {k: v if k in no_tensor else v.to(args.device) for k, v in batch_data.items()}
-            _, pred, labels, masks = model(**batch_data)
+            outputs = model(**batch_data)
+            _, logits, masks, labels = outputs
 
-            predictions = pred.argmax(dim=-1).cpu().numpy() # [batch, seq]
+            predictions = logits.argmax(dim=-1).cpu().numpy() # [batch, event_pair_num]
             y = labels.cpu().numpy()
             lens = np.sum(masks.cpu().numpy(), axis=-1)
             true_labels += [
@@ -106,10 +108,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             best_f1 = dev_f1
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
-            torch.save(
-                model.state_dict(), 
-                os.path.join(args.output_dir, save_weight)
-            )
+            torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
             save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
@@ -139,20 +138,22 @@ def predict(args, document:str, events:list, tokenizer, model):
             continue
         filtered_events.append([token_start, token_end])
         new_events.append(event)
+    if not new_events:
+        return [], [], []
     inputs['batch_events'] = filtered_events.unsqueeze(0)
     no_tensor = ['batch_events', 'batch_event_cluster_ids']
     inputs = {k: v if k in no_tensor else v.to(args.device) for k, v in inputs.items()}
     with torch.no_grad():
-        pred = model(**inputs)[1] # logits
-    predictions = pred.argmax(dim=-1)[0].cpu().numpy().tolist()
-    probabilities = torch.nn.functional.softmax(pred, dim=-1)[0].cpu().numpy().tolist()
+        outputs = model(**inputs)
+        logits = outputs[1]
+    predictions = logits.argmax(dim=-1)[0].cpu().numpy().tolist()
+    probabilities = torch.nn.functional.softmax(logits, dim=-1)[0].cpu().numpy().tolist()
     probabilities = [probabilities[idx][pred] for idx, pred in enumerate(predictions)]
     assert len(predictions) == len(new_events) * (len(new_events) - 1) / 2
     return new_events, predictions, probabilities
 
-def test(args, test_dataset, tokenizer, model, save_weights:list=None):
+def test(args, test_dataset, model, tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(args, test_dataset, tokenizer, batch_size=1, shuffle=False)
-    save_weights = save_weights if save_weights else args.save_weights
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
         logger.info(f'loading weights from {save_weight}...')
@@ -166,22 +167,23 @@ def test(args, test_dataset, tokenizer, model, save_weights:list=None):
         for sample in tqdm(test_dataset):
             events = [[char_start, char_end] for _, char_start, char_end, _, _ in sample['events']]
             event_cluster_dic = {char_start:cluster_id for _, char_start, _, _, cluster_id in sample['events']}
-            true_label = []
-            for i in range(len(events) - 1):
-                for j in range(i+1, len(events)):
-                    true_label.append(1 if event_cluster_dic[events[i][0]] == event_cluster_dic[events[j][0]] else 0)
             new_events, predictions, probabilities = predict(args, sample['document'], events, tokenizer, model)
             results.append({
                 "doc_id": sample['id'], 
                 "document": sample['document'], 
-                "events": [{
-                    'start': char_start, 
-                    'end': char_end, 
-                    'trigger': sample['document'][char_start:char_end+1]
-                } for char_start, char_end in new_events], 
+                "events": [
+                    {
+                        'start': char_start, 
+                        'end': char_end, 
+                        'trigger': sample['document'][char_start:char_end+1]
+                    } for char_start, char_end in new_events
+                ], 
                 "pred_label": predictions, 
                 "pred_prob": probabilities,
-                "true_label": true_label
+                "true_label": [
+                    1 if event_cluster_dic[new_events[i][0]] == event_cluster_dic[new_events[j][0]] else 0
+                    for i in range(len(new_events) - 1) for j in range(i + 1, len(new_events))
+                ]
             })
         with open(os.path.join(args.output_dir, save_weight + '_test_pred.json'), 'wt', encoding='utf-8') as f:
             for exapmle_result in results:
@@ -191,12 +193,16 @@ if __name__ == '__main__':
     args = parse_args()
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
+    if args.do_train and os.path.exists(args.output_dir) and os.listdir(args.output_dir):
+        raise ValueError(
+            f'Output directory ({args.output_dir}) already exists and is not empty.')
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.n_gpu = torch.cuda.device_count()
     logger.warning(f'Using {args.device} device, n_gpu: {args.n_gpu}')
     # Set seed
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
+    logger.info(f'loading pretrained model and tokenizer of {args.model_checkpoint} ...')
     config = AutoConfig.from_pretrained(
         args.model_checkpoint, 
         cache_dir=args.cache_dir, 
@@ -211,12 +217,15 @@ if __name__ == '__main__':
         cache_dir=args.cache_dir
     ).to(args.device)
     # Training
+    save_weights = []
     if args.do_train:
         logger.info(f'Training/evaluation parameters: {args}')
         train_dataset = KBPCoref(args.train_file)
         dev_dataset = KBPCoref(args.dev_file)
-        args.save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
+        save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
     # Testing
     if args.do_test:
         test_dataset = KBPCoref(args.test_file)
-        test(args, test_dataset, tokenizer, model)
+        test(args, test_dataset, model, tokenizer, save_weights)
+else:
+    pass

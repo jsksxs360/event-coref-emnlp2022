@@ -30,9 +30,9 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
                 event_1_list, event_2_list, coref_labels = [], [], []
                 for i in range(len(events) - 1):
                     for j in range(i + 1, len(events)):
-                        cluster_id_1, cluster_id_2 = event_cluster_ids[i], event_cluster_ids[j]
                         event_1_list.append(events[i])
                         event_2_list.append(events[j])
+                        cluster_id_1, cluster_id_2 = event_cluster_ids[i], event_cluster_ids[j]
                         coref_labels.append(1 if cluster_id_1 == cluster_id_2 else 0)
                 max_len = max(max_len, len(coref_labels))
                 batch_event_1_list.append(event_1_list)
@@ -40,12 +40,12 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
                 batch_event_mask.append([1] * len(coref_labels))
                 batch_coref_labels.append(coref_labels)
             # padding
-            for b_idx in range(len(batch_event_mask)):
-                pad_length = max_len - len(batch_event_mask[b_idx])
+            for b_idx in range(len(batch_coref_labels)):
+                pad_length = max_len - len(batch_coref_labels[b_idx]) if max_len > 0 else 1
                 batch_event_1_list[b_idx] += [[0, 0]] * pad_length
                 batch_event_2_list[b_idx] += [[0, 0]] * pad_length
-                batch_coref_labels[b_idx] += [0] * pad_length
                 batch_event_mask[b_idx] += [0] * pad_length
+                batch_coref_labels[b_idx] += [0] * pad_length
         else:
             for events in batch_events:
                 event_1_list, event_2_list = [], []
@@ -59,10 +59,10 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
                 batch_event_mask.append([1] * len(event_1_list))
             # padding
             for b_idx in range(len(batch_event_mask)):
-                length = len(batch_event_mask[b_idx])
-                batch_event_1_list[b_idx] += [[0, 0]] * (max_len - length)
-                batch_event_2_list[b_idx] += [[0, 0]] * (max_len - length)
-                batch_event_mask[b_idx] += [0] * (max_len - length)
+                pad_length = max_len - len(batch_event_mask[b_idx]) if max_len > 0 else 1
+                batch_event_1_list[b_idx] += [[0, 0]] * pad_length
+                batch_event_2_list[b_idx] += [[0, 0]] * pad_length
+                batch_event_mask[b_idx] += [0] * pad_length
 
         batch_event_1 = torch.tensor(batch_event_1_list).to(self.use_device)
         batch_event_2 = torch.tensor(batch_event_2_list).to(self.use_device)
@@ -78,7 +78,7 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
         logits = self.coref_classifier(batch_seq_reps)
 
         loss = None
-        if batch_event_cluster_ids:
+        if batch_event_cluster_ids and max_len > 0:
             assert self.loss_type in ['lsr', 'focal', 'ce']
             if self.loss_type == 'lsr':
                 loss_fct = LabelSmoothingCrossEntropy()
@@ -87,11 +87,8 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
             else:
                 loss_fct = CrossEntropyLoss()
             # Only keep active parts of the loss
-            if batch_mask is not None:
-                active_loss = batch_mask.view(-1) == 1
-                active_logits = logits.view(-1, self.num_labels)[active_loss]
-                active_labels = batch_labels.view(-1)[active_loss]
-                loss = loss_fct(active_logits, active_labels)
-            else:
-                loss = loss_fct(logits.view(-1, self.num_labels), batch_labels.view(-1))
-        return loss, logits, batch_labels, batch_mask
+            active_loss = batch_mask.view(-1) == 1
+            active_logits = logits.view(-1, self.num_labels)[active_loss]
+            active_labels = batch_labels.view(-1)[active_loss]
+            loss = loss_fct(active_logits, active_labels)
+        return loss, logits, batch_mask, batch_labels

@@ -9,9 +9,7 @@ class KBPCoref(Dataset):
         for cluster in clusters:
             if event_id in cluster['events']:
                 return cluster['hopper_id']
-        raise ValueError(
-            f'find cluster id error!')
-        # return None
+        return None
 
     def load_data(self, data_file):
         Data = []
@@ -19,8 +17,8 @@ class KBPCoref(Dataset):
             for line in f:
                 sample = json.loads(line.strip())
                 events = [
-                    [event['event_id'], event['start'], event['start']+len(event['trigger'])-1, event['trigger']] 
-                    for event in sample['events']
+                    [e['event_id'], e['start'], e['start']+len(e['trigger'])-1, e['trigger']] 
+                    for e in sample['events']
                 ]
                 clusters = sample['clusters']
                 for event in events:
@@ -28,7 +26,7 @@ class KBPCoref(Dataset):
                 Data.append({
                     'id': sample['doc_id'], 
                     'document': sample['document'], 
-                    'events': events
+                    'events': events # [event_id, char_start, char_end, trigger, cluster_id]
                 })
         return Data
 
@@ -61,7 +59,7 @@ def get_dataLoader(args, dataset, tokenizer, batch_size=None, shuffle=False):
             for _, char_start, char_end, _, cluster_id in batch_events[s_idx]:
                 token_start = encoding.char_to_token(char_start)
                 token_end = encoding.char_to_token(char_end)
-                if not token_end:
+                if not token_start or not token_end:
                     continue
                 filtered_events.append([token_start, token_end])
                 filtered_event_cluster_id.append(cluster_id)
