@@ -187,20 +187,21 @@ def test(args, test_dataset, model, tokenizer, save_weights:list):
         metrics = test_loop(args, test_dataloader, model)
         with open(os.path.join(args.output_dir, 'test_metrics.txt'), 'at') as f:
             f.write(f'{save_weight}\n{json.dumps(metrics, cls=NpEncoder)}\n\n')
-        logger.info(f'predicting labels of {save_weight}...')
-        results = []
-        model.eval()
-        for sample in tqdm(test_dataset):            
-            pred_label = predict(args, sample['document'], model, tokenizer)
-            results.append({
-                    "doc_id": sample['id'], 
-                    "document": sample['document'], 
-                    "pred_label": pred_label, 
-                    "true_label": sample['tags']
-            })
-        with open(os.path.join(args.output_dir, save_weight + '_test_pred.json'), 'wt', encoding='utf-8') as f:
-            for exapmle_result in results:
-                f.write(json.dumps(exapmle_result) + '\n')
+        if args.do_predict:
+            logger.info(f'predicting labels of {save_weight}...')
+            results = []
+            model.eval()
+            for sample in tqdm(test_dataset):            
+                pred_label = predict(args, sample['document'], model, tokenizer)
+                results.append({
+                        "doc_id": sample['id'], 
+                        "document": sample['document'], 
+                        "pred_label": pred_label, 
+                        "true_label": sample['tags']
+                })
+            with open(os.path.join(args.output_dir, save_weight + '_test_pred.json'), 'wt', encoding='utf-8') as f:
+                for exapmle_result in results:
+                    f.write(json.dumps(exapmle_result) + '\n')
 
 if __name__ == '__main__':
     args = parse_args()

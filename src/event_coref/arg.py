@@ -13,6 +13,7 @@ def parse_args():
     )
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
     parser.add_argument("--do_test", action="store_true", help="Whether to run eval on the test set.")
+    parser.add_argument("--do_predict", action="store_true", help="Whether to save predicted labels.")
     parser.add_argument("--train_file", default=None, type=str, required=True,
         help="The input training file."
     )

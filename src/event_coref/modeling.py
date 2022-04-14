@@ -24,7 +24,7 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
         # construct event pairs (event_1, event_2)
         batch_event_1_list, batch_event_2_list, batch_event_mask = [], [], []
         max_len = 0
-        if batch_event_cluster_ids:
+        if batch_event_cluster_ids is not None:
             batch_coref_labels = []
             for events, event_cluster_ids in zip(batch_events, batch_event_cluster_ids):
                 event_1_list, event_2_list, coref_labels = [], [], []
@@ -68,7 +68,7 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
         batch_event_2 = torch.tensor(batch_event_2_list).to(self.use_device)
         batch_mask = torch.tensor(batch_event_mask).to(self.use_device)
         batch_labels = None
-        if batch_event_cluster_ids:
+        if batch_event_cluster_ids is not None:
             batch_labels = torch.tensor(batch_coref_labels).to(self.use_device)
         # extract events
         batch_event_1_reps = self.span_extractor(sequence_output, batch_event_1, span_indices_mask=batch_mask)
@@ -78,7 +78,7 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
         logits = self.coref_classifier(batch_seq_reps)
 
         loss = None
-        if batch_event_cluster_ids and max_len > 0:
+        if batch_event_cluster_ids is not None and max_len > 0:
             assert self.loss_type in ['lsr', 'focal', 'ce']
             if self.loss_type == 'lsr':
                 loss_fct = LabelSmoothingCrossEntropy()

@@ -20,7 +20,7 @@ class LongformerSoftmaxForTD(LongformerPreTrainedModel):
         logits = self.classifier(sequence_output)
 
         loss = None
-        if labels:
+        if labels is not None:
             assert self.loss_type in ['lsr', 'focal', 'ce']
             if self.loss_type == 'lsr':
                 loss_fct = LabelSmoothingCrossEntropy()
@@ -54,6 +54,6 @@ class LongformerCrfForTD(LongformerPreTrainedModel):
         logits = self.classifier(sequence_output)
 
         loss = None
-        if labels:
+        if labels is not None:
             loss = -1 * self.crf(emissions=logits, tags=labels, mask=attention_mask)
         return loss, logits

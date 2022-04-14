@@ -140,7 +140,7 @@ def predict(args, document:str, events:list, model, tokenizer):
         new_events.append(event)
     if not new_events:
         return [], [], []
-    inputs['batch_events'] = filtered_events.unsqueeze(0)
+    inputs['batch_events'] = [filtered_events]
     no_tensor = ['batch_events', 'batch_event_cluster_ids']
     inputs = {k: v if k in no_tensor else v.to(args.device) for k, v in inputs.items()}
     with torch.no_grad():
@@ -161,33 +161,34 @@ def test(args, test_dataset, model, tokenizer, save_weights:list):
         metrics = test_loop(args, test_dataloader, model)
         with open(os.path.join(args.output_dir, 'test_metrics.txt'), 'at') as f:
             f.write(f'{save_weight}\n{json.dumps(metrics, cls=NpEncoder)}\n\n')
-        logger.info(f'predicting labels of {save_weight}...')
-        results = []
-        model.eval()
-        for sample in tqdm(test_dataset):
-            events = [[char_start, char_end] for _, char_start, char_end, _, _ in sample['events']]
-            event_cluster_dic = {char_start:cluster_id for _, char_start, _, _, cluster_id in sample['events']}
-            new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
-            results.append({
-                "doc_id": sample['id'], 
-                "document": sample['document'], 
-                "events": [
-                    {
-                        'start': char_start, 
-                        'end': char_end, 
-                        'trigger': sample['document'][char_start:char_end+1]
-                    } for char_start, char_end in new_events
-                ], 
-                "pred_label": predictions, 
-                "pred_prob": probabilities,
-                "true_label": [
-                    1 if event_cluster_dic[new_events[i][0]] == event_cluster_dic[new_events[j][0]] else 0
-                    for i in range(len(new_events) - 1) for j in range(i + 1, len(new_events))
-                ]
-            })
-        with open(os.path.join(args.output_dir, save_weight + '_test_pred.json'), 'wt', encoding='utf-8') as f:
-            for exapmle_result in results:
-                f.write(json.dumps(exapmle_result) + '\n')
+        if args.do_predict:
+            logger.info(f'predicting labels of {save_weight}...')
+            results = []
+            model.eval()
+            for sample in tqdm(test_dataset):
+                events = [[char_start, char_end] for _, char_start, char_end, _, _ in sample['events']]
+                event_cluster_dic = {char_start:cluster_id for _, char_start, _, _, cluster_id in sample['events']}
+                new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
+                results.append({
+                    "doc_id": sample['id'], 
+                    "document": sample['document'], 
+                    "events": [
+                        {
+                            'start': char_start, 
+                            'end': char_end, 
+                            'trigger': sample['document'][char_start:char_end+1]
+                        } for char_start, char_end in new_events
+                    ], 
+                    "pred_label": predictions, 
+                    "pred_prob": probabilities,
+                    "true_label": [
+                        1 if event_cluster_dic[new_events[i][0]] == event_cluster_dic[new_events[j][0]] else 0
+                        for i in range(len(new_events) - 1) for j in range(i + 1, len(new_events))
+                    ]
+                })
+            with open(os.path.join(args.output_dir, save_weight + '_test_pred.json'), 'wt', encoding='utf-8') as f:
+                for exapmle_result in results:
+                    f.write(json.dumps(exapmle_result) + '\n')
 
 if __name__ == '__main__':
     args = parse_args()
