@@ -13,6 +13,7 @@ from src.tools import seed_everything, NpEncoder
 from src.event_coref.arg import parse_args
 from src.event_coref.data import KBPCoref, get_dataLoader
 from src.event_coref.modeling import LongformerSoftmaxForEC
+from src.event_coref.analysis import get_wrong_samples, WRONG_TYPE
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -161,42 +162,14 @@ def test(args, test_dataset, model, tokenizer, save_weights:list):
         metrics = test_loop(args, test_dataloader, model)
         with open(os.path.join(args.output_dir, 'test_metrics.txt'), 'at') as f:
             f.write(f'{save_weight}\n{json.dumps(metrics, cls=NpEncoder)}\n\n')
-        if args.do_predict:
-            logger.info(f'predicting labels of {save_weight}...')
-            results = []
-            model.eval()
-            for sample in tqdm(test_dataset):
-                events = [[char_start, char_end] for _, char_start, char_end, _, _ in sample['events']]
-                event_cluster_dic = {char_start:cluster_id for _, char_start, _, _, cluster_id in sample['events']}
-                new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
-                results.append({
-                    "doc_id": sample['id'], 
-                    "document": sample['document'], 
-                    "events": [
-                        {
-                            'start': char_start, 
-                            'end': char_end, 
-                            'trigger': sample['document'][char_start:char_end+1]
-                        } for char_start, char_end in new_events
-                    ], 
-                    "pred_label": predictions, 
-                    "pred_prob": probabilities,
-                    "true_label": [
-                        1 if event_cluster_dic[new_events[i][0]] == event_cluster_dic[new_events[j][0]] else 0
-                        for i in range(len(new_events) - 1) for j in range(i + 1, len(new_events))
-                    ]
-                })
-            with open(os.path.join(args.output_dir, save_weight + '_test_pred.json'), 'wt', encoding='utf-8') as f:
-                for exapmle_result in results:
-                    f.write(json.dumps(exapmle_result) + '\n')
 
 if __name__ == '__main__':
     args = parse_args()
-    if not os.path.exists(args.output_dir):
-        os.mkdir(args.output_dir)
     if args.do_train and os.path.exists(args.output_dir) and os.listdir(args.output_dir):
         raise ValueError(
             f'Output directory ({args.output_dir}) already exists and is not empty.')
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.n_gpu = torch.cuda.device_count()
     logger.warning(f'Using {args.device} device, n_gpu: {args.n_gpu}')
@@ -228,5 +201,72 @@ if __name__ == '__main__':
     if args.do_test:
         test_dataset = KBPCoref(args.test_file)
         test(args, test_dataset, model, tokenizer, save_weights)
-else:
-    pass
+    # Predicting
+    if args.do_predict:
+        best_save_weight = 'epoch_12_dev_f1_67.1188_weights.bin'
+        pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
+        
+        logger.info(f'loading weights from {best_save_weight}...')
+        model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
+        logger.info(f'predicting coref labels of {best_save_weight}...')
+        results = []
+        model.eval()
+        pred_event_filepath = os.path.join(args.output_dir, pred_event_file)
+        with open(pred_event_filepath, 'rt' , encoding='utf-8') as f_in:
+            for line in tqdm(f_in.readlines()):
+                sample = json.loads(line.strip())
+                events = [
+                    [event['start'], event['start'] + len(event['trigger']) - 1] 
+                    for event in sample['pred_label']
+                ]
+                new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
+                results.append({
+                    "doc_id": sample['doc_id'], 
+                    "document": sample['document'], 
+                    "events": [
+                        {
+                            'start': char_start, 
+                            'end': char_end, 
+                            'trigger': sample['document'][char_start:char_end+1]
+                        } for char_start, char_end in new_events
+                    ], 
+                    "pred_label": predictions, 
+                    "pred_prob": probabilities
+                })
+        with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
+            for exapmle_result in results:
+                f.write(json.dumps(exapmle_result) + '\n')
+    # Analysis
+    if args.do_analysis:
+        analysis_weight = 'epoch_12_dev_f1_67.1188_weights.bin'
+        logger.info(f'loading weights from {analysis_weight}...')
+        model.load_state_dict(torch.load(os.path.join(args.output_dir, analysis_weight)))
+        logger.info(f'predicting coref labels of {analysis_weight}...')
+        all_wrong_1, all_wrong_2 = [], []
+        all_predictions, all_labels = [], []
+        model.eval()
+        with open(os.path.join(args.test_file), 'rt' , encoding='utf-8') as f_in:
+            for line in tqdm(f_in.readlines()):
+                sample = json.loads(line.strip())
+                events = [
+                    [event['start'], event['start'] + len(event['trigger']) - 1] 
+                    for event in sample['events']
+                ]
+                new_events, predictions, _ = predict(args, sample['document'], events, model, tokenizer)
+                all_predictions += predictions
+                wrong_1_list, wrong_2_list, true_labels = get_wrong_samples(
+                    sample['doc_id'], 
+                    new_events, predictions, 
+                    sample['events'], sample['clusters'], sample['sentences']
+                )
+                all_labels += true_labels
+                all_wrong_1 += wrong_1_list
+                all_wrong_2 += wrong_2_list
+        assert len(all_labels) == len(all_predictions)
+        print(classification_report(all_labels, all_predictions))
+        print(f'all_wrong_1: {len(all_wrong_1)}\tall_wrong_2: {len(all_wrong_2)}')
+        with open(os.path.join(args.output_dir, analysis_weight + '_' + WRONG_TYPE[0] + '.json'), 'wt', encoding='utf-8') as f_out_1:
+            f_out_1.write(json.dumps(all_wrong_1) + '\n')
+        with open(os.path.join(args.output_dir, analysis_weight + '_' + WRONG_TYPE[1] + '.json'), 'wt', encoding='utf-8') as f_out_2:
+            f_out_2.write(json.dumps(all_wrong_2) + '\n')
+        
