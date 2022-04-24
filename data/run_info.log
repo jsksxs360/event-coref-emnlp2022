@@ -1,0 +1,44 @@
+2022/04/09 04:50:42 - INFO - Convert - parsing xml files in KBP 2015 ...
+2022/04/09 04:50:42 - WARNING - Convert - update: [EX-](3) - [EX-SOUTH](8)
+2022/04/09 04:50:42 - WARNING - Convert - update: [manufacture](11) - [manufacturer](12)
+2022/04/09 04:50:43 - WARNING - Convert - update: [explanation](11) - [explanations](12)
+2022/04/09 04:50:43 - WARNING - Convert - update: [explanation](11) - [explanations](12)
+2022/04/09 04:50:43 - WARNING - Convert - update: [explanation](11) - [explanations](12)
+2022/04/09 04:50:43 - INFO - Convert - Finished!
+2022/04/09 04:50:43 - INFO - Utils - KBP 2015 - Doc: 648 | Event: 18736 | Cluster: 11603 | Singleton: 8484
+2022/04/09 04:50:43 - INFO - Convert - parsing xml files in KBP 2016 ...
+2022/04/09 04:50:44 - INFO - Convert - Finished!
+2022/04/09 04:50:44 - INFO - Utils - KBP 2016 - Doc: 169 | Event: 4155 | Cluster: 3191 | Singleton: 2709
+2022/04/09 04:50:44 - INFO - Convert - parsing xml files in KBP 2017 ...
+2022/04/09 04:50:44 - WARNING - Convert - update: [-](1) - [-1996](5)
+2022/04/09 04:50:45 - INFO - Convert - Finished!
+2022/04/09 04:50:45 - INFO - Utils - KBP 2017 - Doc: 167 | Event: 4375 | Cluster: 2963 | Singleton: 2358
+
+2022/04/09 04:50:45 - INFO - Convert - Train & Dev set: Doc: 817 | Event: 22894 | Cluster: 14794
+2022/04/09 04:50:45 - INFO - Convert - finding the correct split...
+2022/04/09 05:09:33 - INFO - Convert - Done!
+2022/04/09 05:09:33 - INFO - Convert - saving train set ...
+2022/04/09 05:09:33 - INFO - Utils - KBP train - Doc: 735 | Event: 20509 | Cluster: 13292 | Singleton: 10067
+2022/04/09 05:09:33 - INFO - Convert - Finished!
+2022/04/09 05:09:33 - INFO - Convert - saving dev set ...
+2022/04/09 05:09:33 - INFO - Utils - KBP dev - Doc: 82 | Event: 2382 | Cluster: 1502 | Singleton: 1126
+2022/04/09 05:09:33 - INFO - Convert - Finished!
+2022/04/09 05:09:33 - INFO - Convert - saving test set ...
+2022/04/09 05:09:33 - INFO - Utils - KBP test - Doc: 167 | Event: 4375 | Cluster: 2963 | Singleton: 2358
+2022/04/09 05:09:33 - INFO - Convert - Finished!
+
+2022/04/09 05:09:33 - INFO - Filter - KBP train event filtered: 1629 (same 1621 / overlapping 8)
+2022/04/09 05:09:33 - INFO - Filter - KBP train cluster filtered: 951
+2022/04/09 05:09:33 - INFO - Utils - KBP train - Doc: 735 | Event: 18880 | Cluster: 12341 | Singleton: 9369
+2022/04/09 05:09:33 - INFO - Convert - saving filtered train set ...
+2022/04/09 05:09:33 - INFO - Convert - Finished!
+2022/04/09 05:09:33 - INFO - Filter - KBP dev event filtered: 200 (same 198 / overlapping 2)
+2022/04/09 05:09:33 - INFO - Filter - KBP dev cluster filtered: 100
+2022/04/09 05:09:33 - INFO - Utils - KBP dev - Doc: 82 | Event: 2182 | Cluster: 1402 | Singleton: 1051
+2022/04/09 05:09:33 - INFO - Convert - saving filtered dev set ...
+2022/04/09 05:09:33 - INFO - Convert - Finished!
+2022/04/09 05:09:33 - INFO - Filter - KBP test event filtered: 379 (same 378 / overlapping 1)
+2022/04/09 05:09:33 - INFO - Filter - KBP test cluster filtered: 256
+2022/04/09 05:09:33 - INFO - Utils - KBP test - Doc: 167 | Event: 3996 | Cluster: 2707 | Singleton: 2161
+2022/04/09 05:09:33 - INFO - Convert - saving filtered test set ...
+2022/04/09 05:09:33 - INFO - Convert - Finished!
