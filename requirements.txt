@@ -1,4 +1,4 @@
-numpy=1.22.3
+numpy==1.22.3
 torch==1.11.0
 seqeval==1.2.2
 allennlp==2.9.2

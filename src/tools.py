@@ -7,6 +7,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from typing import List, Optional
+from transformers.activations import ACT2FN
 
 def seed_everything(seed=1029):
     random.seed(seed)
@@ -475,3 +476,24 @@ class CRF(nn.Module):
             best_tags_arr[idx] = best_tags.data.view(batch_size, -1) // nbest
 
         return torch.where(mask.unsqueeze(-1), best_tags_arr, oor_tag).permute(2, 1, 0)
+
+class FullyConnectedLayer(nn.Module):
+    def __init__(self, config, input_dim, output_dim, dropout_prob):
+        super(FullyConnectedLayer, self).__init__()
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.dropout_prob = dropout_prob
+
+        self.dense = nn.Linear(self.input_dim, self.output_dim)
+        self.layer_norm = nn.LayerNorm(self.output_dim, eps=config.layer_norm_eps)
+        self.activation_func = ACT2FN[config.hidden_act]
+        self.dropout = nn.Dropout(self.dropout_prob)
+
+    def forward(self, inputs):
+        temp = inputs
+        temp = self.dense(temp)
+        temp = self.activation_func(temp)
+        temp = self.layer_norm(temp)
+        temp = self.dropout(temp)
+        return temp
