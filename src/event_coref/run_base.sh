@@ -1,7 +1,7 @@
 export OUTPUT_DIR=./results/
 export CACHE_DIR=../../cache/
 
-python3 run_coref.py \
+python3 run_base.py \
     --output_dir=$OUTPUT_DIR \
     --cache_dir=$CACHE_DIR \
     --model_checkpoint=allenai/longformer-large-4096 \

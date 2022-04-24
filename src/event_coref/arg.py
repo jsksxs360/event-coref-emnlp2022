@@ -4,6 +4,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # Required parameters
+    parser.add_argument("--model_type",
+        default="longformer", type=str, required=True
+    )
     parser.add_argument("--model_checkpoint",
         default="allenai/longformer-base-4096", type=str, required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models",
@@ -26,6 +29,14 @@ def parse_args():
     )
     parser.add_argument("--max_seq_length", default=4096, type=int, required=True)
     # Other parameters
+    parser.add_argument("--mention_encoder_type",
+        default="bert", type=str, required=True
+    )
+    parser.add_argument("--mention_encoder_checkpoint",
+        default="bert-large-cased", type=str, 
+        help="Path to pretrained model or model identifier from huggingface.co/models",
+    )
+    parser.add_argument("--max_mention_length", default=512, type=int)
     parser.add_argument("--softmax_loss", default='ce', type=str,
         help="The loss function for softmax model.", 
         choices=['lsr', 'focal', 'ce']

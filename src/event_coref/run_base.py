@@ -20,15 +20,22 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
                     level=logging.INFO)
 logger = logging.getLogger("Model")
 
+NO_TENSOR = ['batch_events', 'batch_event_cluster_ids']
+
+def to_device(args, batch_data):
+    return {
+        k: v if k in NO_TENSOR else v.to(args.device) 
+        for k, v in batch_data.items()
+    }
+
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))
     progress_bar.set_description(f'loss: {0:>7f}')
     finish_step_num = epoch * len(dataloader)
     
     model.train()
-    no_tensor = ['batch_events', 'batch_event_cluster_ids']
     for step, batch_data in enumerate(dataloader, start=1):
-        batch_data = {k: v if k in no_tensor else v.to(args.device) for k, v in batch_data.items()}
+        batch_data = to_device(args, batch_data)
         outputs = model(**batch_data)
         loss = outputs[0]
 
@@ -47,9 +54,8 @@ def test_loop(args, dataloader, model):
     true_labels, true_predictions = [], []
     model.eval()
     with torch.no_grad():
-        no_tensor = ['batch_events', 'batch_event_cluster_ids']
         for batch_data in tqdm(dataloader):
-            batch_data = {k: v if k in no_tensor else v.to(args.device) for k, v in batch_data.items()}
+            batch_data = to_device(args, batch_data)
             outputs = model(**batch_data)
             _, logits, masks, labels = outputs
 
@@ -120,7 +126,7 @@ def predict(args, document:str, events:list, model, tokenizer):
     '''
     # Args:
         - events: [
-            [e1_char_start, e1_char_end], ...
+            [e_char_start, e_char_end], ...
         ], document[e1_char_start:e1_char_end + 1] = trigger1
     '''
     inputs = tokenizer(
@@ -142,8 +148,7 @@ def predict(args, document:str, events:list, model, tokenizer):
     if not new_events:
         return [], [], []
     inputs['batch_events'] = [filtered_events]
-    no_tensor = ['batch_events', 'batch_event_cluster_ids']
-    inputs = {k: v if k in no_tensor else v.to(args.device) for k, v in inputs.items()}
+    inputs = to_device(args, inputs)
     with torch.no_grad():
         outputs = model(**inputs)
         logits = outputs[1]
