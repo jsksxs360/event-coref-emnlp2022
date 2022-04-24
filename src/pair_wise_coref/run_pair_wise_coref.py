@@ -2,6 +2,7 @@ import os
 import logging
 import torch
 import json
+from collections import namedtuple, defaultdict
 from tqdm.auto import tqdm
 from transformers import AutoConfig, AutoTokenizer
 from transformers import AdamW, get_scheduler
@@ -10,17 +11,16 @@ import sys
 sys.path.append('../../')
 from src.pair_wise_coref.arg import parse_args
 from src.tools import seed_everything, NpEncoder
-from src.pair_wise_coref.data import KBPCorefPair, get_dataLoader
+from src.pair_wise_coref.data import KBPCorefPair, get_dataLoader, NO_CUTE, cut_sent
 from src.pair_wise_coref.modeling import LongformerForPairwiseEC, BertForPairwiseEC
 from src.pair_wise_coref.modeling import RobertaForPairwiseEC, DebertaForPairwiseEC
-from data.convert import get_KBP_sents, SENT_FILE
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
                     level=logging.INFO)
 logger = logging.getLogger("Model")
+Sentence = namedtuple("Sentence", ["start", "text"])
 
-NO_CUTE = ['longformer', 'bert', 'spanbert']
 MODEL_CLASSES = {
     'bert': BertForPairwiseEC,
     'spanbert': BertForPairwiseEC, 
@@ -28,7 +28,6 @@ MODEL_CLASSES = {
     'deberta': DebertaForPairwiseEC, 
     'longformer': LongformerForPairwiseEC
 }
-KBP_SENTS = get_KBP_sents(os.path.join('../../data', SENT_FILE))
 
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))
@@ -134,12 +133,6 @@ def predict(args,
     e2_char_start, e2_char_end, 
     model, tokenizer
     ):
-
-    def cut_sent(sent, e_char_start, e_char_end, max_length):
-        before = ' '.join(sent[:e_char_start].split(' ')[-max_length:]).strip()
-        trigger = sent[e_char_start:e_char_end+1]
-        after = ' '.join(sent[e_char_end+1:].split(' ')[:max_length]).strip()
-        return before + ' ' + trigger + ' ' + after, len(before) + 1, len(before) + len(trigger)
     
     if args.model_type not in NO_CUTE:
         max_length = (args.max_seq_length - 50) // 4
@@ -175,8 +168,8 @@ def get_event_sent(e_start, e_end, sents):
     for sent in sents:
         sent_end = sent.start + len(sent.text) - 1
         if e_start >= sent.start and e_end <= sent_end:
-            return sent.text, e_start - sent.start
-    return None
+            return sent.text, e_start - sent.start, e_end - sent.start
+    return None, None, None
 
 if __name__ == '__main__':
     args = parse_args()
@@ -217,6 +210,12 @@ if __name__ == '__main__':
         test(args, test_dataset, model, tokenizer, save_weights)
     # Predicting
     if args.do_predict:
+        kbp_sent_dic = defaultdict(list) # {filename: [Sentence]}
+        with open(os.path.join('../../data/kbp_sent.txt'), 'rt', encoding='utf-8') as sents:
+            for line in sents:
+                doc_id, start, text = line.strip().split('\t')
+                kbp_sent_dic[doc_id].append(Sentence(int(start), text))
+
         best_save_weight = 'XXX.bin'
         pred_event_file = 'XXX_pred_events.json'
         
@@ -234,12 +233,12 @@ if __name__ == '__main__':
                     (event['start'], event['start'] + len(event['trigger']) - 1, event['trigger'])
                     for event in sample['pred_label']
                 ]
-                sents = KBP_SENTS[sample['doc_id']]
+                sents = kbp_sent_dic[sample['doc_id']]
                 new_events = []
                 for e_start, e_end, e_trigger in events:
-                    e_sent, e_new_start = get_event_sent(e_start, e_end, sents)
-                    assert e_sent is not None and e_sent[e_new_start:e_new_start + len(e_trigger)] == e_trigger
-                    new_events.append((e_new_start, e_new_start + len(e_trigger) - 1, e_sent))
+                    e_sent, e_new_start, e_new_end = get_event_sent(e_start, e_end, sents)
+                    assert e_sent is not None and e_sent[e_new_start:e_new_end+1] == e_trigger
+                    new_events.append((e_new_start, e_new_end, e_sent))
                 predictions, probabilities = [], []
                 for i in range(len(new_events) - 1):
                     for j in range(i + 1, len(new_events)):

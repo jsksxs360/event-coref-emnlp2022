@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import json
 
-NO_CUTE = ['longformer', 'bert', 'spanbert']
+NO_CUTE = ['bert', 'spanbert']
 
 class KBPCorefPair(Dataset):
     def __init__(self, data_file):
@@ -55,13 +55,13 @@ class KBPCorefPair(Dataset):
     def __getitem__(self, idx):
         return self.data[idx]
 
+def cut_sent(sent, e_char_start, e_char_end, max_length):
+    before = ' '.join([c for c in sent[:e_char_start].split(' ') if c != ''][-max_length:]).strip()
+    trigger = sent[e_char_start:e_char_end+1]
+    after = ' '.join([c for c in sent[e_char_end+1:].split(' ') if c != ''][:max_length]).strip()
+    return before + ' ' + trigger + ' ' + after, len(before) + 1, len(before) + len(trigger)
+
 def get_dataLoader(args, dataset, tokenizer, batch_size=None, shuffle=False, return_mask_inputs=False):
-    
-    def cut_sent(sent, e_char_start, e_char_end, max_length):
-        before = ' '.join(sent[:e_char_start].split(' ')[-max_length:]).strip()
-        trigger = sent[e_char_start:e_char_end+1]
-        after = ' '.join(sent[e_char_end+1:].split(' ')[:max_length]).strip()
-        return before + ' ' + trigger + ' ' + after, len(before) + 1, len(before) + len(trigger)
 
     def collote_fn(batch_samples):
         batch_sen_1, batch_sen_2, batch_event_idx, batch_label  = [], [], [], []

@@ -217,8 +217,8 @@ def get_event_sent(e_start, e_end, sents):
     for sent in sents:
         sent_end = sent.start + len(sent.text) - 1
         if e_start >= sent.start and e_end <= sent_end:
-            return sent.text, e_start - sent.start
-    return None
+            return sent.text, e_start - sent.start,  e_end - sent.start
+    return None, None, None
 
 if __name__ == '__main__':
     args = parse_args()
@@ -286,10 +286,10 @@ if __name__ == '__main__':
                 sents = kbp_sent_dic[sample['doc_id']]
                 mentions, mention_pos = [], []
                 for event in sample['pred_label']:
-                    e_sent, e_new_start = get_event_sent(event['start'], event['start'] + len(event['trigger']) - 1, sents)
-                    assert e_sent is not None and e_sent[e_new_start:e_new_start + len(event['trigger'])] == event['trigger']
+                    e_sent, e_new_start, e_new_end = get_event_sent(event['start'], event['start'] + len(event['trigger']) - 1, sents)
+                    assert e_sent is not None and e_sent[e_new_start:e_new_end+1] == event['trigger']
                     mentions.append(e_sent)
-                    mention_pos.append([e_new_start, e_new_start + len(event['trigger']) - 1])
+                    mention_pos.append([e_new_start, e_new_end])
                 new_events, predictions, probabilities = predict(
                     args, sample['document'], events, mentions, mention_pos, model, tokenizer, mention_tokenizer
                 )
