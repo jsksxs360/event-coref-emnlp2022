@@ -2,21 +2,30 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers import LongformerPreTrainedModel, LongformerModel
 from ..tools import LabelSmoothingCrossEntropy, FocalLoss, CRF
+from ..tools import FullyConnectedLayer
 
 class LongformerSoftmaxForTD(LongformerPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, args):
         super().__init__(config)
-        self.num_labels = config.num_labels
+        self.num_labels = args.num_labels
         self.longformer = LongformerModel(config, add_pooling_layer=False)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        self.loss_type = config.loss_type
+        self.use_ffnn_layer = args.use_ffnn_layer
+        if self.use_ffnn_layer:
+            self.ffnn_size = args.ffnn_size if args.ffnn_size != -1 else config.hidden_size
+            self.mlp = FullyConnectedLayer(config, config.hidden_size, self.ffnn_size, config.hidden_dropout_prob)
+        else:
+            self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.classifier = nn.Linear(self.ffnn_size if args.use_ffnn_layer else config.hidden_size, self.num_labels)
+        self.loss_type = args.softmax_loss
         self.post_init()
     
     def forward(self, input_ids, attention_mask, labels=None):
         outputs = self.longformer(input_ids, attention_mask=attention_mask)
         sequence_output = outputs[0]
-        sequence_output = self.dropout(sequence_output)
+        if self.use_ffnn_layer:
+            sequence_output = self.mlp(sequence_output)
+        else:
+            sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
 
         loss = None
@@ -39,18 +48,27 @@ class LongformerSoftmaxForTD(LongformerPreTrainedModel):
         return loss, logits
 
 class LongformerCrfForTD(LongformerPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, args):
         super().__init__(config)
+        self.num_labels = args.num_labels
         self.longformer = LongformerModel(config, add_pooling_layer=False)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        self.crf = CRF(num_tags=config.num_labels, batch_first=True)
+        self.use_ffnn_layer = args.use_ffnn_layer
+        if self.use_ffnn_layer:
+            self.ffnn_size = args.ffnn_size if args.ffnn_size != -1 else config.hidden_size
+            self.mlp = FullyConnectedLayer(config, config.hidden_size, self.ffnn_size, config.hidden_dropout_prob)
+        else:
+            self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.classifier = nn.Linear(self.ffnn_size if args.use_ffnn_layer else config.hidden_size, self.num_labels)
+        self.crf = CRF(num_tags=self.num_labels, batch_first=True)
         self.post_init()
     
     def forward(self, input_ids, attention_mask, labels=None):
         outputs = self.longformer(input_ids, attention_mask=attention_mask)
         sequence_output = outputs[0]
-        sequence_output = self.dropout(sequence_output)
+        if self.use_ffnn_layer:
+            sequence_output = self.mlp(sequence_output)
+        else:
+            sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
 
         loss = None

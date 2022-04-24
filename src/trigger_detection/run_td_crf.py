@@ -199,17 +199,17 @@ def test(args, test_dataset, model, tokenizer, save_weights:list):
                         "pred_label": pred_label, 
                         "true_label": sample['tags']
                 })
-            with open(os.path.join(args.output_dir, save_weight + '_test_pred.json'), 'wt', encoding='utf-8') as f:
+            with open(os.path.join(args.output_dir, save_weight + '_test_pred_events.json'), 'wt', encoding='utf-8') as f:
                 for exapmle_result in results:
                     f.write(json.dumps(exapmle_result) + '\n')
 
 if __name__ == '__main__':
     args = parse_args()
-    if not os.path.exists(args.output_dir):
-        os.mkdir(args.output_dir)
     if args.do_train and os.path.exists(args.output_dir) and os.listdir(args.output_dir):
         raise ValueError(
             f'Output directory ({args.output_dir}) already exists and is not empty.')
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.n_gpu = torch.cuda.device_count()
     logger.warning(f'Using {args.device} device, n_gpu: {args.n_gpu}')
@@ -226,18 +226,19 @@ if __name__ == '__main__':
         args.id2label[len(args.id2label)] = f"B-{c}"
         args.id2label[len(args.id2label)] = f"I-{c}"
     args.label2id = {v: k for k, v in args.id2label.items()}
+    args.num_labels = len(args.id2label)
     # Load pretrained model and tokenizer
     logger.info(f'loading pretrained model and tokenizer of {args.model_checkpoint} ...')
     config = AutoConfig.from_pretrained(
         args.model_checkpoint, 
-        cache_dir=args.cache_dir, 
-        num_labels=len(args.id2label)
+        cache_dir=args.cache_dir
     )
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     model = LongformerCrfForTD.from_pretrained(
         args.model_checkpoint,
         config=config,
-        cache_dir=args.cache_dir
+        cache_dir=args.cache_dir, 
+        args=args
     ).to(args.device)
     # Training
     save_weights = []

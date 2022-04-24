@@ -25,6 +25,10 @@ def parse_args():
     )
     parser.add_argument("--max_seq_length", default=4096, type=int, required=True)
     # Other parameters
+    parser.add_argument("--use_ffnn_layer", action="store_true", help="Whether add mlp layer.")
+    parser.add_argument("--ffnn_size", default=-1, type=int,
+        help="The size of mlp layer."
+    )
     parser.add_argument("--softmax_loss", default='ce', type=str,
         help="The loss function for softmax model.", 
         choices=['lsr', 'focal', 'ce']
