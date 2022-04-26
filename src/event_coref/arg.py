@@ -29,6 +29,7 @@ def parse_args():
     )
     parser.add_argument("--max_seq_length", default=4096, type=int, required=True)
     # Other parameters
+    parser.add_argument("--add_contrastive_loss", action="store_true")
     parser.add_argument("--mention_encoder_type",
         default="bert", type=str, required=True
     )

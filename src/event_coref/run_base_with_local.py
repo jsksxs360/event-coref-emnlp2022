@@ -236,11 +236,11 @@ if __name__ == '__main__':
     logger.info(f'loading pretrained model and tokenizer of {args.model_type} & {args.mention_encoder_type}...')
     main_config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     encoder_config = AutoConfig.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
+    mention_tokenizer = AutoTokenizer.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
     args.loss_type = args.softmax_loss
     args.use_device = args.device
-    tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
-    mention_tokenizer = AutoTokenizer.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     model = LongformerSoftmaxForECwithMention.from_pretrained(
         args.model_checkpoint,
         config=main_config,
