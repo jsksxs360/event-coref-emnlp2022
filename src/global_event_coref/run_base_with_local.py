@@ -11,9 +11,9 @@ import os
 import sys
 sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
-from src.event_coref.arg import parse_args
-from src.event_coref.data import KBPCoref, get_dataLoader, NO_CUTE, cut_sent
-from src.event_coref.modeling import LongformerSoftmaxForECwithMention
+from src.global_event_coref.arg import parse_args
+from src.global_event_coref.data import KBPCoref, get_dataLoader, NO_CUTE, cut_sent
+from src.global_event_coref.modeling import LongformerSoftmaxForECwithMention
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
