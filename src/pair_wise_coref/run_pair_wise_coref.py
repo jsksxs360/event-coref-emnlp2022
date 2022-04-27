@@ -185,12 +185,9 @@ if __name__ == '__main__':
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
     logger.info(f'loading pretrained model and tokenizer of {args.model_type} ...')
-    config = AutoConfig.from_pretrained(
-        args.model_checkpoint, 
-        cache_dir=args.cache_dir, 
-        num_labels=2
-    )
+    config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
+    args.num_labels = 2
     model = MODEL_CLASSES[args.model_type].from_pretrained(
         args.model_checkpoint,
         config=config,

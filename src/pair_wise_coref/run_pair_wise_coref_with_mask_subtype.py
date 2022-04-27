@@ -1,9 +1,9 @@
 import os
 import logging
-import torch
 import json
-from collections import namedtuple, defaultdict
+import torch
 from tqdm.auto import tqdm
+from collections import namedtuple, defaultdict
 from transformers import AutoConfig, AutoTokenizer
 from transformers import AdamW, get_scheduler
 from sklearn.metrics import classification_report
@@ -11,9 +11,9 @@ import sys
 sys.path.append('../../')
 from src.pair_wise_coref.arg import parse_args
 from src.tools import seed_everything, NpEncoder
-from src.pair_wise_coref.data import KBPCorefPair, get_dataLoader, NO_CUTE, cut_sent
-from src.pair_wise_coref.modeling import LongformerForPairwiseECWithMask, BertForPairwiseECWithMask
-from src.pair_wise_coref.modeling import RobertaForPairwiseECWithMask, DebertaForPairwiseECWithMask
+from src.pair_wise_coref.data import KBPCorefPair, get_dataLoader, CATEGORIES, NO_CUTE, cut_sent
+from src.pair_wise_coref.modeling import LongformerForPairwiseECWithMaskAndSubtype, BertForPairwiseECWithMaskAndSubtype
+from src.pair_wise_coref.modeling import RobertaForPairwiseECWithMaskAndSubtype, DebertaForPairwiseECWithMaskAndSubtype
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -22,11 +22,11 @@ logger = logging.getLogger("Model")
 Sentence = namedtuple("Sentence", ["start", "text"])
 
 MODEL_CLASSES = {
-    'bert': BertForPairwiseECWithMask,
-    'spanbert': BertForPairwiseECWithMask, 
-    'roberta': RobertaForPairwiseECWithMask, 
-    'deberta': DebertaForPairwiseECWithMask, 
-    'longformer': LongformerForPairwiseECWithMask
+    'bert': BertForPairwiseECWithMaskAndSubtype,
+    'spanbert': BertForPairwiseECWithMaskAndSubtype, 
+    'roberta': RobertaForPairwiseECWithMaskAndSubtype, 
+    'deberta': DebertaForPairwiseECWithMaskAndSubtype, 
+    'longformer': LongformerForPairwiseECWithMaskAndSubtype
 }
 SPECIAL_KEYS = ['batch_inputs', 'batch_inputs_with_mask']
 
@@ -74,8 +74,8 @@ def test_loop(args, dataloader, model):
 
 def train(args, train_dataset, dev_dataset, model, tokenizer):
     """ Train the model """
-    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, shuffle=True, collote_fn_type='mask')
-    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, shuffle=False, collote_fn_type='mask')
+    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, shuffle=True, collote_fn_type='mask_and_subtype')
+    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, shuffle=False, collote_fn_type='mask_and_subtype')
     t_total = len(train_dataloader) * args.num_train_epochs
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -125,7 +125,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
     return save_weights
 
 def test(args, test_dataset, model, tokenizer, save_weights:list):
-    test_dataloader = get_dataLoader(args, test_dataset, tokenizer, batch_size=1, shuffle=False, collote_fn_type='mask')
+    test_dataloader = get_dataLoader(args, test_dataset, tokenizer, batch_size=1, shuffle=False, collote_fn_type='mask_and_subtype')
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
         logger.info(f'loading weights from {save_weight}...')
@@ -203,6 +203,7 @@ if __name__ == '__main__':
     config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
+    args.num_subtypes = len(CATEGORIES) + 1
     model = MODEL_CLASSES[args.model_type].from_pretrained(
         args.model_checkpoint,
         config=config,
