@@ -4,6 +4,7 @@ export CACHE_DIR=../../cache/
 python3 run_base.py \
     --output_dir=$OUTPUT_DIR \
     --cache_dir=$CACHE_DIR \
+    --model_type=longformer \
     --model_checkpoint=allenai/longformer-large-4096 \
     --train_file=../../data/train_filtered.json \
     --dev_file=../../data/dev_filtered.json \

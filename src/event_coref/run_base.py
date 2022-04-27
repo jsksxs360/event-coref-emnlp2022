@@ -181,7 +181,7 @@ if __name__ == '__main__':
     # Set seed
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
-    logger.info(f'loading pretrained model and tokenizer of {args.model_checkpoint} ...')
+    logger.info(f'loading pretrained model and tokenizer of {args.model_type} ...')
     config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir, )
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
@@ -215,7 +215,7 @@ if __name__ == '__main__':
         test(args, test_dataset, model, tokenizer, save_weights)
     # Predicting
     if args.do_predict:
-        best_save_weight = 'epoch_12_dev_f1_67.1188_weights.bin'
+        best_save_weight = 'XXX_weights.bin'
         pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
         
         logger.info(f'loading weights from {best_save_weight}...')

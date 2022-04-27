@@ -28,11 +28,10 @@ def parse_args():
         help="The input testing file.",
     )
     parser.add_argument("--max_seq_length", default=4096, type=int, required=True)
+    
     # Other parameters
     parser.add_argument("--add_contrastive_loss", action="store_true")
-    parser.add_argument("--mention_encoder_type",
-        default="bert", type=str, required=True
-    )
+    parser.add_argument("--mention_encoder_type", default="bert", type=str)
     parser.add_argument("--mention_encoder_checkpoint",
         default="bert-large-cased", type=str, 
         help="Path to pretrained model or model identifier from huggingface.co/models",
