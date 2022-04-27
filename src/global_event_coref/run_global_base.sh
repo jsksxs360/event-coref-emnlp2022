@@ -1,7 +1,7 @@
-export OUTPUT_DIR=./longformer_mask_subtype_results/
+export OUTPUT_DIR=./longformer_results/
 export CACHE_DIR=../../cache/
 
-python3 run_pair_wise_coref_with_mask_subtype.py \
+python3 run_global_base.py \
     --output_dir=$OUTPUT_DIR \
     --cache_dir=$CACHE_DIR \
     --model_type=longformer \
@@ -12,8 +12,9 @@ python3 run_pair_wise_coref_with_mask_subtype.py \
     --max_seq_length=4096 \
     --learning_rate=1e-5 \
     --softmax_loss=ce \
-    --num_train_epochs=10 \
-    --batch_size=4 \
+    --num_train_epochs=50 \
+    --batch_size=1 \
     --do_train \
+    --do_test \
     --warmup_proportion=0. \
     --seed=42

@@ -1,7 +1,7 @@
-export OUTPUT_DIR=./results/
+export OUTPUT_DIR=./longformer_mask_results/
 export CACHE_DIR=../../cache/
 
-python3 run_pair_wise_coref.py \
+python3 run_local_base_with_mask.py \
     --output_dir=$OUTPUT_DIR \
     --cache_dir=$CACHE_DIR \
     --model_type=longformer \
