@@ -18,7 +18,7 @@ def parse_args():
     parser.add_argument("--do_rescore", action="store_true", help="Whether to rescoring coref value.")
     parser.add_argument("--do_evaluate", action="store_true", help="Whether to evaluate conll files.")
     # Other parameters
-    parser.add_argument("--rescore_reward", default=0.8, type=int, required=False)
-    parser.add_argument("--rescore_penalty", default=0.8, type=int, required=False)
+    parser.add_argument("--rescore_reward", default=0.8, type=float, required=False)
+    parser.add_argument("--rescore_penalty", default=0.8, type=float, required=False)
     args = parser.parse_args()
     return args
