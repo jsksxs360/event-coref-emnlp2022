@@ -10,7 +10,7 @@ from seqeval.metrics import classification_report
 from seqeval.scheme import IOB2
 import sys
 sys.path.append('../../')
-from src.trigger_detection.data import KBPTrigger, get_dataLoader
+from src.trigger_detection.data import KBPTrigger, get_dataLoader, CATEGORIES
 from src.trigger_detection.modeling import LongformerSoftmaxForTD
 from src.trigger_detection.arg import parse_args
 from src.tools import seed_everything, NpEncoder
@@ -199,13 +199,8 @@ if __name__ == '__main__':
     # Set seed
     seed_everything(args.seed)
     # Prepare task
-    categories = [
-        'artifact', 'transferownership', 'transaction', 'broadcast', 'contact', 'demonstrate', \
-        'injure', 'transfermoney', 'transportartifact', 'attack', 'meet', 'elect', \
-        'endposition', 'correspondence', 'arrestjail', 'startposition', 'transportperson', 'die'
-    ]
     args.id2label = {0:'O'}
-    for c in categories:
+    for c in CATEGORIES:
         args.id2label[len(args.id2label)] = f"B-{c}"
         args.id2label[len(args.id2label)] = f"I-{c}"
     args.label2id = {v: k for k, v in args.id2label.items()}

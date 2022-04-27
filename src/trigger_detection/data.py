@@ -3,7 +3,7 @@ import json
 import numpy as np
 import torch
 
-categories = [
+CATEGORIES = [
     'artifact', 'transferownership', 'transaction', 'broadcast', 'contact', 'demonstrate', \
     'injure', 'transfermoney', 'transportartifact', 'attack', 'meet', 'elect', \
     'endposition', 'correspondence', 'arrestjail', 'startposition', 'transportperson', 'die'
@@ -20,7 +20,7 @@ class KBPTrigger(Dataset):
                 sample = json.loads(line.strip())
                 tags = [
                     (event['start'], event['start'] + len(event['trigger']) - 1, event['trigger'], event['subtype']) 
-                    for event in sample['events'] if event['subtype'] in categories
+                    for event in sample['events'] if event['subtype'] in CATEGORIES
                 ]
                 Data.append({
                     'id': sample['doc_id'], 
