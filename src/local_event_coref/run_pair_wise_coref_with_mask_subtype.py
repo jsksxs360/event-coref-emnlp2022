@@ -9,11 +9,11 @@ from transformers import AdamW, get_scheduler
 from sklearn.metrics import classification_report
 import sys
 sys.path.append('../../')
-from src.pair_wise_coref.arg import parse_args
 from src.tools import seed_everything, NpEncoder
-from src.pair_wise_coref.data import KBPCorefPair, get_dataLoader, CATEGORIES, NO_CUTE, cut_sent
-from src.pair_wise_coref.modeling import LongformerForPairwiseECWithMaskAndSubtype, BertForPairwiseECWithMaskAndSubtype
-from src.pair_wise_coref.modeling import RobertaForPairwiseECWithMaskAndSubtype, DebertaForPairwiseECWithMaskAndSubtype
+from src.local_event_coref.arg import parse_args
+from src.local_event_coref.data import KBPCorefPair, get_dataLoader, CATEGORIES, NO_CUTE, cut_sent
+from src.local_event_coref.modeling import LongformerForPairwiseECWithMaskAndSubtype, BertForPairwiseECWithMaskAndSubtype
+from src.local_event_coref.modeling import RobertaForPairwiseECWithMaskAndSubtype, DebertaForPairwiseECWithMaskAndSubtype
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
