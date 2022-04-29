@@ -13,7 +13,7 @@ from src.tools import seed_everything, NpEncoder
 from src.local_event_coref.arg import parse_args
 from src.local_event_coref.data import KBPCorefPair, get_dataLoader, CATEGORIES, NO_CUTE, cut_sent
 from src.local_event_coref.modeling import LongformerForPairwiseECWithMaskAndSubtype, BertForPairwiseECWithMaskAndSubtype
-from src.local_event_coref.modeling import RobertaForPairwiseECWithMaskAndSubtype, DebertaForPairwiseECWithMaskAndSubtype
+from src.local_event_coref.modeling import RobertaForPairwiseECWithMaskAndSubtype
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -25,7 +25,6 @@ MODEL_CLASSES = {
     'bert': BertForPairwiseECWithMaskAndSubtype,
     'spanbert': BertForPairwiseECWithMaskAndSubtype, 
     'roberta': RobertaForPairwiseECWithMaskAndSubtype, 
-    'deberta': DebertaForPairwiseECWithMaskAndSubtype, 
     'longformer': LongformerForPairwiseECWithMaskAndSubtype
 }
 SPECIAL_KEYS = ['batch_inputs', 'batch_inputs_with_mask']

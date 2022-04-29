@@ -13,7 +13,7 @@ from src.tools import seed_everything, NpEncoder
 from src.local_event_coref.arg import parse_args
 from src.local_event_coref.data import KBPCorefPair, get_dataLoader, NO_CUTE, cut_sent
 from src.local_event_coref.modeling import LongformerForPairwiseEC, BertForPairwiseEC
-from src.local_event_coref.modeling import RobertaForPairwiseEC, DebertaForPairwiseEC
+from src.local_event_coref.modeling import RobertaForPairwiseEC
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -25,7 +25,6 @@ MODEL_CLASSES = {
     'bert': BertForPairwiseEC,
     'spanbert': BertForPairwiseEC, 
     'roberta': RobertaForPairwiseEC, 
-    'deberta': DebertaForPairwiseEC, 
     'longformer': LongformerForPairwiseEC
 }
 

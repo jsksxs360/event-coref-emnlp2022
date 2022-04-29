@@ -13,7 +13,7 @@ from src.tools import seed_everything, NpEncoder
 from src.local_event_coref.arg import parse_args
 from src.local_event_coref.data import KBPCorefPair, get_dataLoader, NO_CUTE, cut_sent
 from src.local_event_coref.modeling import LongformerForPairwiseECWithMask, BertForPairwiseECWithMask
-from src.local_event_coref.modeling import RobertaForPairwiseECWithMask, DebertaForPairwiseECWithMask
+from src.local_event_coref.modeling import RobertaForPairwiseECWithMask
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -24,8 +24,7 @@ Sentence = namedtuple("Sentence", ["start", "text"])
 MODEL_CLASSES = {
     'bert': BertForPairwiseECWithMask,
     'spanbert': BertForPairwiseECWithMask, 
-    'roberta': RobertaForPairwiseECWithMask, 
-    'deberta': DebertaForPairwiseECWithMask, 
+    'roberta': RobertaForPairwiseECWithMask,  
     'longformer': LongformerForPairwiseECWithMask
 }
 SPECIAL_KEYS = ['batch_inputs', 'batch_inputs_with_mask']
