@@ -7,4 +7,6 @@ python3 run_cluster.py \
     --golden_conll_filename=gold_test.conll \
     --pred_conll_filename=pred_test.conll \
     --do_evaluate \
-    --do_rescore
+    # --do_rescore \
+    # --rescore_reward=0.5 \
+    # --rescore_penalty=0.5

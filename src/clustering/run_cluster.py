@@ -8,7 +8,7 @@ import sys
 sys.path.append('../../')
 from src.clustering.arg import parse_args
 from src.clustering.utils import create_golden_conll_file, get_pred_coref_results, create_pred_conll_file
-from src.clustering.cluster import clustering_greedy
+from src.clustering.cluster import clustering
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -60,10 +60,10 @@ if __name__ == '__main__':
     cluster_dict = {} # {doc_id: [cluster_set_1, cluster_set_2, ...]}
     logger.info('clustering ...')
     for doc_id, pred_result in tqdm(pred_coref_results.items()):
-        cluster_list = clustering_greedy(
+        cluster_list = clustering(
             pred_result['events'], 
             pred_result['pred_labels'], 
-            rescore=args.do_rescore, 
+            mode='rescore' if args.do_rescore else 'greedy', 
             rescore_reward=args.rescore_reward, 
             rescore_penalty=args.rescore_penalty
         )
