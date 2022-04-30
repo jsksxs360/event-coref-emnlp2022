@@ -11,6 +11,7 @@ python3 run_local_base_with_mask.py \
     --test_file=../../data/test_filtered.json \
     --max_seq_length=4096 \
     --learning_rate=1e-5 \
+    --matching_style=multi_dist \
     --softmax_loss=ce \
     --num_train_epochs=10 \
     --batch_size=4 \

@@ -13,7 +13,14 @@ class BertForPairwiseEC(BertPreTrainedModel):
         self.bert = BertModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.coref_classifier = nn.Linear(3 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -25,8 +32,18 @@ class BertForPairwiseEC(BertPreTrainedModel):
         # extract events
         batch_event_1_reps = self.span_extractor(sequence_output, batch_e1_idx).squeeze(dim=1)
         batch_event_2_reps = self.span_extractor(sequence_output, batch_e2_idx).squeeze(dim=1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -46,7 +63,14 @@ class RobertaForPairwiseEC(RobertaPreTrainedModel):
         self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.coref_classifier = nn.Linear(3 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -58,8 +82,18 @@ class RobertaForPairwiseEC(RobertaPreTrainedModel):
         # extract events
         batch_event_1_reps = self.span_extractor(sequence_output, batch_e1_idx).squeeze(dim=1)
         batch_event_2_reps = self.span_extractor(sequence_output, batch_e2_idx).squeeze(dim=1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -79,7 +113,14 @@ class LongformerForPairwiseEC(LongformerPreTrainedModel):
         self.longformer = LongformerModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.coref_classifier = nn.Linear(3 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -91,8 +132,18 @@ class LongformerForPairwiseEC(LongformerPreTrainedModel):
         # extract events
         batch_event_1_reps = self.span_extractor(sequence_output, batch_e1_idx).squeeze(dim=1)
         batch_event_2_reps = self.span_extractor(sequence_output, batch_e2_idx).squeeze(dim=1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -113,7 +164,14 @@ class BertForPairwiseECWithMask(BertPreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.coref_classifier = nn.Linear(6 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * 2 * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -132,8 +190,18 @@ class BertForPairwiseECWithMask(BertPreTrainedModel):
         batch_event_mask_2_reps = self.mask_span_extractor(sequence_output_with_mask, batch_e2_idx).squeeze(dim=1)
         batch_event_1_reps = torch.cat([batch_event_1_reps, batch_event_mask_1_reps], dim=-1)
         batch_event_2_reps = torch.cat([batch_event_2_reps, batch_event_mask_2_reps], dim=-1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -154,7 +222,14 @@ class RobertaForPairwiseECWithMask(RobertaPreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.coref_classifier = nn.Linear(6 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * 2 * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -173,8 +248,18 @@ class RobertaForPairwiseECWithMask(RobertaPreTrainedModel):
         batch_event_mask_2_reps = self.mask_span_extractor(sequence_output_with_mask, batch_e2_idx).squeeze(dim=1)
         batch_event_1_reps = torch.cat([batch_event_1_reps, batch_event_mask_1_reps], dim=-1)
         batch_event_2_reps = torch.cat([batch_event_2_reps, batch_event_mask_2_reps], dim=-1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -195,7 +280,14 @@ class LongformerForPairwiseECWithMask(LongformerPreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.coref_classifier = nn.Linear(6 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * 2 * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -214,8 +306,18 @@ class LongformerForPairwiseECWithMask(LongformerPreTrainedModel):
         batch_event_mask_2_reps = self.mask_span_extractor(sequence_output_with_mask, batch_e2_idx).squeeze(dim=1)
         batch_event_1_reps = torch.cat([batch_event_1_reps, batch_event_mask_1_reps], dim=-1)
         batch_event_2_reps = torch.cat([batch_event_2_reps, batch_event_mask_2_reps], dim=-1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -238,7 +340,14 @@ class BertForPairwiseECWithMaskAndSubtype(BertPreTrainedModel):
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.subtype_classifier = nn.Linear(config.hidden_size, args.num_subtypes)
-        self.coref_classifier = nn.Linear(6 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * 2 * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -261,8 +370,18 @@ class BertForPairwiseECWithMaskAndSubtype(BertPreTrainedModel):
         batch_event_mask_2_reps = batch_event_mask_2_reps.squeeze(dim=1)
         batch_event_1_reps = torch.cat([batch_event_1_reps, batch_event_mask_1_reps], dim=-1)
         batch_event_2_reps = torch.cat([batch_event_2_reps, batch_event_mask_2_reps], dim=-1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -288,7 +407,14 @@ class RobertaForPairwiseECWithMaskAndSubtype(RobertaPreTrainedModel):
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.subtype_classifier = nn.Linear(config.hidden_size, args.num_subtypes)
-        self.coref_classifier = nn.Linear(6 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * 2 * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -311,8 +437,18 @@ class RobertaForPairwiseECWithMaskAndSubtype(RobertaPreTrainedModel):
         batch_event_mask_2_reps = batch_event_mask_2_reps.squeeze(dim=1)
         batch_event_1_reps = torch.cat([batch_event_1_reps, batch_event_mask_1_reps], dim=-1)
         batch_event_2_reps = torch.cat([batch_event_2_reps, batch_event_mask_2_reps], dim=-1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
@@ -338,7 +474,14 @@ class LongformerForPairwiseECWithMaskAndSubtype(LongformerPreTrainedModel):
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.subtype_classifier = nn.Linear(config.hidden_size, args.num_subtypes)
-        self.coref_classifier = nn.Linear(6 * config.hidden_size, args.num_labels)
+        self.matching_style = args.matching_style
+        if args.matching_style == 'base':
+            multiples = 2
+        elif args.matching_style == 'multi' or args.matching_style == 'dist':
+            multiples = 3
+        elif args.matching_style == 'multi_dist':
+            multiples = 4
+        self.coref_classifier = nn.Linear(multiples * 2 * config.hidden_size, args.num_labels)
         self.loss_type = args.softmax_loss
         self.use_device = args.device
         self.post_init()
@@ -361,8 +504,18 @@ class LongformerForPairwiseECWithMaskAndSubtype(LongformerPreTrainedModel):
         batch_event_mask_2_reps = batch_event_mask_2_reps.squeeze(dim=1)
         batch_event_1_reps = torch.cat([batch_event_1_reps, batch_event_mask_1_reps], dim=-1)
         batch_event_2_reps = torch.cat([batch_event_2_reps, batch_event_mask_2_reps], dim=-1)
-        batch_e1_e2 = batch_event_1_reps * batch_event_2_reps
-        batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2], dim=-1)
+        if self.matching_style == 'base':
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps], dim=-1)
+        elif self.matching_style == 'multi':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         logits = self.coref_classifier(batch_seq_reps)
         loss = None
         if labels is not None:
