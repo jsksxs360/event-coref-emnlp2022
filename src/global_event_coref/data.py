@@ -68,7 +68,7 @@ def cut_sent(sent, e_char_start, e_char_end, max_length):
 
 def get_dataLoader(args, dataset, tokenizer, mention_tokenizer=None, batch_size=None, shuffle=False, collote_fn_type='normal'):
 
-    assert collote_fn_type in ['normal', 'with_mention']
+    assert collote_fn_type in ['normal', 'with_mention', 'with_mask_subtype']
 
     def collote_fn(batch_samples):
         batch_sentences, batch_events  = [], []
@@ -129,7 +129,7 @@ def get_dataLoader(args, dataset, tokenizer, mention_tokenizer=None, batch_size=
             filtered_event_cluster_id = []
             for event, mention, mention_pos in zip(
                 batch_events[b_idx], batch_mentions[b_idx], batch_mention_pos[b_idx]
-                ):
+            ):
                 token_start = encoding.char_to_token(event['char_start'])
                 if not token_start:
                     token_start = encoding.char_to_token(event['char_start'] + 1)
@@ -173,11 +173,93 @@ def get_dataLoader(args, dataset, tokenizer, mention_tokenizer=None, batch_size=
             'batch_event_cluster_ids': batch_filtered_event_cluster_id
         }
     
+    def collote_fn_with_mask_subtyep(batch_samples):
+        batch_sentences, batch_events = [], []
+        batch_mentions, batch_mention_pos = [], []
+        for sample in batch_samples:
+            batch_sentences.append(sample['document'])
+            batch_events.append(sample['events'])
+            batch_mentions.append(sample['event_mentions'])
+            batch_mention_pos.append(sample['mention_char_pos'])
+        batch_inputs = tokenizer(
+            batch_sentences, 
+            max_length=args.max_seq_length, 
+            padding=True, 
+            truncation=True, 
+            return_tensors="pt"
+        )
+        batch_filtered_events = []
+        batch_filtered_mention_inputs_with_mask = []
+        batch_filtered_mention_events = []
+        batch_filtered_event_cluster_id = []
+        batch_filtered_event_subtypes = []
+        for b_idx, sentence in enumerate(batch_sentences):
+            encoding = tokenizer(sentence, max_length=args.max_seq_length, truncation=True)
+            filtered_events = []
+            filtered_event_mentions = []
+            filtered_mention_events = []
+            filtered_event_cluster_id = []
+            filtered_event_subtypes = []
+            for event, mention, mention_pos in zip(
+                batch_events[b_idx], batch_mentions[b_idx], batch_mention_pos[b_idx]
+            ):
+                token_start = encoding.char_to_token(event['char_start'])
+                if not token_start:
+                    token_start = encoding.char_to_token(event['char_start'] + 1)
+                token_end = encoding.char_to_token(event['char_end'])
+                if not token_start or not token_end:
+                    continue
+                # cut long mention for Roberta-like model
+                mention_char_start, mention_char_end = mention_pos
+                if args.mention_encoder_type not in NO_CUTE:
+                    max_length = (args.max_mention_length - 50) // 2
+                    mention, mention_char_start, mention_char_end = cut_sent(
+                        mention, mention_char_start, mention_char_end, max_length
+                    )
+                mention_encoding = mention_tokenizer(mention, max_length=args.max_mention_length, truncation=True)
+                mention_token_start = mention_encoding.char_to_token(mention_char_start)
+                if not mention_token_start:
+                    mention_token_start = mention_encoding.char_to_token(mention_char_start + 1)
+                mention_token_end = mention_encoding.char_to_token(mention_char_end)
+                assert mention_token_start and mention_token_end
+                filtered_events.append([token_start, token_end])
+                filtered_event_mentions.append(mention)
+                filtered_mention_events.append([mention_token_start, mention_token_end])
+                filtered_event_cluster_id.append(event['cluster_id'])
+                filtered_event_subtypes.append(event['subtype'])
+            batch_filtered_events.append(filtered_events)
+            batch_filtered_mention_inputs_with_mask.append(
+                mention_tokenizer(
+                    filtered_event_mentions, 
+                    max_length=args.max_mention_length, 
+                    padding=True, 
+                    truncation=True, 
+                    return_tensors="pt"
+                )
+            )
+            batch_filtered_mention_events.append(filtered_mention_events)
+            batch_filtered_event_cluster_id.append(filtered_event_cluster_id)
+            batch_filtered_event_subtypes.append(filtered_event_subtypes)
+        for b_idx in range(len(batch_filtered_event_subtypes)):
+            for e_idx, (e_start, e_end) in enumerate(batch_filtered_mention_events[b_idx]):
+                batch_filtered_mention_inputs_with_mask[b_idx]['input_ids'][e_idx][e_start:e_end+1] = mention_tokenizer.mask_token_id
+        return {
+            'batch_inputs': batch_inputs, 
+            'batch_events': batch_filtered_events, 
+            'batch_mention_inputs_with_mask': batch_filtered_mention_inputs_with_mask, 
+            'batch_mention_events': batch_filtered_mention_events, 
+            'batch_event_cluster_ids': batch_filtered_event_cluster_id, 
+            'batch_event_subtypes': batch_filtered_event_subtypes
+        }
+
     if collote_fn_type == 'normal':
         select_collote_fn = collote_fn
     elif collote_fn_type == 'with_mention':
         assert mention_tokenizer is not None
         select_collote_fn = collote_fn_with_mention
+    elif collote_fn_type == 'with_mask_subtype':
+        assert mention_tokenizer is not None
+        select_collote_fn = collote_fn_with_mask_subtyep
     return DataLoader(
         dataset, 
         batch_size=(batch_size if batch_size else args.batch_size), 

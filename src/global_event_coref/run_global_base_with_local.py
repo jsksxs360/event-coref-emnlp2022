@@ -151,6 +151,7 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
     )
     filtered_events = []
     new_events = []
+    filtered_mentions = []
     filtered_mention_events = []
     for event, mention, mention_pos in zip(events, mentions, mention_pos):
         char_start, char_end = event
@@ -160,8 +161,6 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
         token_end = inputs.char_to_token(char_end)
         if not token_start or not token_end:
             continue
-        filtered_events.append([token_start, token_end])
-        new_events.append(event)
         # cut long mention for Roberta-like model
         mention_char_start, mention_char_end = mention_pos
         if args.mention_encoder_type not in NO_CUTE:
@@ -175,9 +174,12 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
             mention_token_start = mention_encoding.char_to_token(mention_char_start + 1)
         mention_token_end = mention_encoding.char_to_token(mention_char_end)
         assert mention_token_start and mention_token_end
+        filtered_events.append([token_start, token_end])
+        new_events.append(event)
+        filtered_mentions.append(mention)
         filtered_mention_events.append([mention_token_start, mention_token_end])
     filtered_mention_inputs = mention_tokenizer(
-        mentions, 
+        filtered_mentions, 
         max_length=args.max_mention_length, 
         padding=True, 
         truncation=True, 
@@ -241,8 +243,6 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     mention_tokenizer = AutoTokenizer.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
-    args.loss_type = args.softmax_loss
-    args.use_device = args.device
     model = LongformerSoftmaxForECwithMention.from_pretrained(
         args.model_checkpoint,
         config=main_config,
