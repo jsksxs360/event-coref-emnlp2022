@@ -21,12 +21,10 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
 logger = logging.getLogger("Model")
 Sentence = namedtuple("Sentence", ["start", "text"])
 
-SPECIAL_KEYS = ['batch_events', 'batch_mention_events', 'batch_event_cluster_ids']
-
 def to_device(args, batch_data):
     new_batch_data = {}
     for k, v in batch_data.items():
-        if k in SPECIAL_KEYS:
+        if k in ['batch_events', 'batch_mention_events', 'batch_event_cluster_ids']:
             new_batch_data[k] = v
         elif k == 'batch_inputs':
             new_batch_data[k] = {
@@ -83,8 +81,8 @@ def test_loop(args, dataloader, model):
 
 def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer):
     """ Train the model """
-    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True)
-    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False)
+    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mention')
+    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mention')
     t_total = len(train_dataloader) * args.num_train_epochs
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -204,7 +202,10 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
     return new_events, predictions, probabilities
 
 def test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights:list):
-    test_dataloader = get_dataLoader(args, test_dataset, tokenizer, mention_tokenizer, batch_size=1, shuffle=False)
+    test_dataloader = get_dataLoader(
+        args, test_dataset, tokenizer, mention_tokenizer, batch_size=1, shuffle=False, 
+        collote_fn_type='with_mention'
+    )
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
         logger.info(f'loading weights from {save_weight}...')
@@ -234,6 +235,7 @@ if __name__ == '__main__':
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
     logger.info(f'loading pretrained model and tokenizer of {args.model_type} & {args.mention_encoder_type}...')
+    logger.info(f'using model {"with" if args.add_contrastive_loss else "without"} Contrastive loss')
     main_config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     encoder_config = AutoConfig.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)

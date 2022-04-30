@@ -12,7 +12,7 @@ sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
 from src.global_event_coref.arg import parse_args
 from src.global_event_coref.data import KBPCoref, get_dataLoader
-from src.global_event_coref.modeling import LongformerSoftmaxForEC, LongformerSoftmaxContrastiveForEC
+from src.global_event_coref.modeling import LongformerSoftmaxForEC
 from src.global_event_coref.analysis import get_wrong_samples, WRONG_TYPE
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
@@ -182,26 +182,18 @@ if __name__ == '__main__':
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
     logger.info(f'loading pretrained model and tokenizer of {args.model_type} ...')
+    logger.info(f'using model {"with" if args.add_contrastive_loss else "without"} Contrastive loss')
     config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir, )
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
     args.loss_type = args.softmax_loss
     args.use_device = args.device
-    if args.add_contrastive_loss:
-        logger.info('using model with Contrastive loss')
-        model = LongformerSoftmaxContrastiveForEC.from_pretrained(
-            args.model_checkpoint,
-            config=config,
-            cache_dir=args.cache_dir, 
-            args=args
-        ).to(args.device)
-    else:
-        model = LongformerSoftmaxForEC.from_pretrained(
-            args.model_checkpoint,
-            config=config,
-            cache_dir=args.cache_dir, 
-            args=args
-        ).to(args.device)
+    model = LongformerSoftmaxForEC.from_pretrained(
+        args.model_checkpoint,
+        config=config,
+        cache_dir=args.cache_dir, 
+        args=args
+    ).to(args.device)
     # Training
     save_weights = []
     if args.do_train:

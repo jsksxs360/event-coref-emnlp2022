@@ -1,4 +1,4 @@
-export OUTPUT_DIR=./longformer_results/
+export OUTPUT_DIR=./longformer_multi_dist_with_cont_results/
 export CACHE_DIR=../../cache/
 
 python3 run_global_base.py \
@@ -11,10 +11,11 @@ python3 run_global_base.py \
     --test_file=../../data/test_filtered.json \
     --max_seq_length=4096 \
     --learning_rate=1e-5 \
+    --add_contrastive_loss \
+    --matching_style=multi_dist \
     --softmax_loss=ce \
     --num_train_epochs=50 \
     --batch_size=1 \
     --do_train \
-    --do_test \
     --warmup_proportion=0. \
     --seed=42
