@@ -344,7 +344,7 @@ class LongformerSoftmaxForECwithMention(LongformerPreTrainedModel):
                 loss = loss_coref
         return loss, logits, batch_mask, batch_labels
 
-class LongformerSoftmaxForECwithMaskAndSubtype(LongformerPreTrainedModel):
+class LongformerSoftmaxForECwithMask(LongformerPreTrainedModel):
     def __init__(self, config, encoder_config, args):
         super().__init__(config)
         self.num_labels = args.num_labels
@@ -569,7 +569,7 @@ class LongformerSoftmaxForECwithMaskAndSubtype(LongformerPreTrainedModel):
                 loss = 0.6 * loss_coref + 0.4 * loss_subtype
         return loss, logits, batch_mask, batch_labels
 
-class LongformerSoftmaxForECwithMentionMaskSubtype(LongformerPreTrainedModel):
+class LongformerSoftmaxForECwithMentionAndMask(LongformerPreTrainedModel):
     def __init__(self, config, encoder_config, args):
         super().__init__(config)
         self.num_labels = args.num_labels

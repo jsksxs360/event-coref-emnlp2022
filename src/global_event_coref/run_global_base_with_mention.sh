@@ -1,6 +1,6 @@
 export OUTPUT_DIR=./longformer_roberta_results/
 
-python3 run_global_base_with_mask_subtype.py \
+python3 run_global_base_with_mention.py \
     --output_dir=$OUTPUT_DIR \
     --model_type=longformer \
     --model_checkpoint=../../../PT_MODELS/allenai/longformer-large-4096/ \

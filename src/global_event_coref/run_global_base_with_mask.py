@@ -13,7 +13,7 @@ sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
 from src.global_event_coref.arg import parse_args
 from src.global_event_coref.data import KBPCoref, get_dataLoader, NO_CUTE, cut_sent, SUBTYPES
-from src.global_event_coref.modeling import LongformerSoftmaxForECwithMentionMaskSubtype
+from src.global_event_coref.modeling import LongformerSoftmaxForECwithMask
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -30,7 +30,7 @@ def to_device(args, batch_data):
             new_batch_data[k] = {
                 k_: v_.to(args.device) for k_, v_ in v.items()
             }
-        elif k in ['batch_mention_inputs', 'batch_mention_inputs_with_mask']:
+        elif k == 'batch_mention_inputs_with_mask':
             new_batch_data[k] = [
                 {k_: v_.to(args.device) for k_, v_ in inputs.items()} 
                 for inputs in v
@@ -81,8 +81,8 @@ def test_loop(args, dataloader, model):
 
 def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer):
     """ Train the model """
-    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mention_mask_subtype')
-    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mention_mask_subtype')
+    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mask_subtype')
+    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mask_subtype')
     t_total = len(train_dataloader) * args.num_train_epochs
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -178,13 +178,6 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
         new_events.append(event)
         filtered_mentions.append(mention)
         filtered_mention_events.append([mention_token_start, mention_token_end])
-    filtered_mention_inputs = mention_tokenizer(
-        filtered_mentions, 
-        max_length=args.max_mention_length, 
-        padding=True, 
-        truncation=True, 
-        return_tensors="pt"
-    )
     filtered_mention_inputs_with_mask = mention_tokenizer(
         filtered_mentions, 
         max_length=args.max_mention_length, 
@@ -199,7 +192,6 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
     inputs = {
         'batch_inputs': inputs, 
         'batch_events': [filtered_events], 
-        'batch_mention_inputs': [filtered_mention_inputs], 
         'batch_mention_inputs_with_mask': [filtered_mention_inputs_with_mask], 
         'batch_mention_events': [filtered_mention_events]
     }
@@ -216,7 +208,7 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
 def test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(
         args, test_dataset, tokenizer, mention_tokenizer, batch_size=1, shuffle=False, 
-        collote_fn_type='with_mention_mask_subtype'
+        collote_fn_type='with_mask_subtype'
     )
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
@@ -254,7 +246,7 @@ if __name__ == '__main__':
     mention_tokenizer = AutoTokenizer.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
     args.num_subtypes = len(SUBTYPES) + 1
-    model = LongformerSoftmaxForECwithMentionMaskSubtype.from_pretrained(
+    model = LongformerSoftmaxForECwithMask.from_pretrained(
         args.model_checkpoint,
         config=main_config,
         encoder_config=encoder_config, 
