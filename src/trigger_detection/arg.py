@@ -11,6 +11,9 @@ def parse_args():
     parser.add_argument("--dev_file", default=None, type=str, required=True, help="The input evaluation file.")
     parser.add_argument("--test_file", default=None, type=str, required=True, help="The input testing file.")
 
+    parser.add_argument("--model_type",
+        default="longformer", type=str, required=True
+    )
     parser.add_argument("--model_checkpoint",
         default="allenai/longformer-base-4096", type=str, required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models",

@@ -206,7 +206,7 @@ if __name__ == '__main__':
     args.label2id = {v: k for k, v in args.id2label.items()}
     args.num_labels = len(args.id2label)
     # Load pretrained model and tokenizer
-    logger.info(f'loading pretrained model and tokenizer of {args.model_checkpoint} ...')
+    logger.info(f'loading pretrained model and tokenizer of {args.model_type} ...')
     config = AutoConfig.from_pretrained(
         args.model_checkpoint, 
         cache_dir=args.cache_dir

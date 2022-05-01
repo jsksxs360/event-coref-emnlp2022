@@ -1,10 +1,9 @@
 export OUTPUT_DIR=./softmax_ce_results/
-export CACHE_DIR=../../cache/
 
 python3 run_td_softmax.py \
     --output_dir=$OUTPUT_DIR \
-    --cache_dir=$CACHE_DIR \
-    --model_checkpoint=allenai/longformer-large-4096 \
+    --model_type=longformer \
+    --model_checkpoint=../../PT_MODELS/allenai/longformer-large-4096/ \
     --train_file=../../data/train_filtered.json \
     --dev_file=../../data/dev_filtered.json \
     --test_file=../../data/test_filtered.json \
@@ -14,6 +13,5 @@ python3 run_td_softmax.py \
     --num_train_epochs=50 \
     --batch_size=1 \
     --do_train \
-    --do_test \
     --warmup_proportion=0. \
     --seed=42
