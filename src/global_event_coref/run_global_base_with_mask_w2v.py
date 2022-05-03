@@ -6,14 +6,16 @@ import torch
 from transformers import AdamW, get_scheduler
 from transformers import AutoConfig, AutoTokenizer
 import numpy as np
+from gensim.models import KeyedVectors
 from sklearn.metrics import classification_report
 import os
 import sys
 sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
 from src.global_event_coref.arg import parse_args
-from src.global_event_coref.data import KBPCoref, get_dataLoader, NO_CUTE, cut_sent, SUBTYPES
-from src.global_event_coref.modeling import LongformerSoftmaxForECwithMentionAndMask
+from src.global_event_coref.data import KBPCorefWithW2V, get_dataLoader, NO_CUTE, cut_sent, SUBTYPES
+from src.global_event_coref.data import get_trigger_vector
+from src.global_event_coref.modeling import LongformerSoftmaxForECwithMaskAndW2V
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -26,11 +28,13 @@ def to_device(args, batch_data):
     for k, v in batch_data.items():
         if k in ['batch_events', 'batch_mention_events', 'batch_event_cluster_ids', 'batch_event_subtypes']:
             new_batch_data[k] = v
+        elif k == 'batch_event_w2vs':
+            new_batch_data[k] = [torch.tensor(event_w2vs, dtype=torch.float32).to(args.device) for event_w2vs in v]
         elif k == 'batch_inputs':
             new_batch_data[k] = {
                 k_: v_.to(args.device) for k_, v_ in v.items()
             }
-        elif k in ['batch_mention_inputs', 'batch_mention_inputs_with_mask']:
+        elif k == 'batch_mention_inputs_with_mask':
             new_batch_data[k] = [
                 {k_: v_.to(args.device) for k_, v_ in inputs.items()} 
                 for inputs in v
@@ -81,8 +85,8 @@ def test_loop(args, dataloader, model):
 
 def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer):
     """ Train the model """
-    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mention_mask')
-    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mention_mask')
+    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mask_w2v')
+    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mask_w2v')
     t_total = len(train_dataloader) * args.num_train_epochs
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -131,7 +135,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
     logger.info("Done!")
     return save_weights
 
-def predict(args, document:str, events:list, mentions:list, mention_pos:list, model, tokenizer, mention_tokenizer):
+def predict(args, document:str, events:list, event_w2vs:list, mentions:list, mention_pos:list, model, tokenizer, mention_tokenizer):
     '''
     # Args:
         - events: [
@@ -151,9 +155,10 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
     )
     filtered_events = []
     new_events = []
+    filtered_w2vs = []
     filtered_mentions = []
     filtered_mention_events = []
-    for event, mention, mention_pos in zip(events, mentions, mention_pos):
+    for event, event_w2v, mention, mention_pos in zip(events, event_w2vs, mentions, mention_pos):
         char_start, char_end = event
         token_start = inputs.char_to_token(char_start)
         if not token_start:
@@ -176,15 +181,9 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
         assert mention_token_start and mention_token_end
         filtered_events.append([token_start, token_end])
         new_events.append(event)
+        filtered_w2vs.append(event_w2v)
         filtered_mentions.append(mention)
         filtered_mention_events.append([mention_token_start, mention_token_end])
-    filtered_mention_inputs = mention_tokenizer(
-        filtered_mentions, 
-        max_length=args.max_mention_length, 
-        padding=True, 
-        truncation=True, 
-        return_tensors="pt"
-    )
     filtered_mention_inputs_with_mask = mention_tokenizer(
         filtered_mentions, 
         max_length=args.max_mention_length, 
@@ -199,7 +198,7 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
     inputs = {
         'batch_inputs': inputs, 
         'batch_events': [filtered_events], 
-        'batch_mention_inputs': [filtered_mention_inputs], 
+        'batch_event_w2vs': [np.asarray(filtered_w2vs)], 
         'batch_mention_inputs_with_mask': [filtered_mention_inputs_with_mask], 
         'batch_mention_events': [filtered_mention_events]
     }
@@ -216,7 +215,7 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
 def test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(
         args, test_dataset, tokenizer, mention_tokenizer, batch_size=1, shuffle=False, 
-        collote_fn_type='with_mention_mask'
+        collote_fn_type='with_mask_w2v'
     )
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
@@ -246,31 +245,33 @@ if __name__ == '__main__':
     # Set seed
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
-    logger.info(f'loading pretrained model and tokenizer of {args.model_type} & {args.mention_encoder_type}...')
     logger.info(f'using model {"with" if args.add_contrastive_loss else "without"} Contrastive loss')
+    logger.info(f'loading pretrained model and tokenizer of {args.model_type} & {args.mention_encoder_type}...')
     main_config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     encoder_config = AutoConfig.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     mention_tokenizer = AutoTokenizer.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
     args.num_subtypes = len(SUBTYPES) + 1
-    model = LongformerSoftmaxForECwithMentionAndMask.from_pretrained(
+    model = LongformerSoftmaxForECwithMaskAndW2V.from_pretrained(
         args.model_checkpoint,
         config=main_config,
         encoder_config=encoder_config, 
         cache_dir=args.cache_dir,
         args=args
     ).to(args.device)
+    logger.info(f'loading Word2Vector model...')
+    W2V = KeyedVectors.load_word2vec_format(args.w2v_model_path, binary=True, unicode_errors='ignore')
     # Training
     save_weights = []
     if args.do_train:
         logger.info(f'Training/evaluation parameters: {args}')
-        train_dataset = KBPCoref(args.train_file)
-        dev_dataset = KBPCoref(args.dev_file)
+        train_dataset = KBPCorefWithW2V(args.train_file, W2V)
+        dev_dataset = KBPCorefWithW2V(args.dev_file, W2V)
         save_weights = train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
     # Testing
     if args.do_test:
-        test_dataset = KBPCoref(args.test_file)
+        test_dataset = KBPCorefWithW2V(args.test_file, W2V)
         test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights)
     # Predicting
     if args.do_predict:
@@ -296,6 +297,7 @@ if __name__ == '__main__':
                     [event['start'], event['start'] + len(event['trigger']) - 1] 
                     for event in sample['pred_label']
                 ]
+                event_w2vs = [get_trigger_vector(W2V, event['trigger'], 300) for event in sample['pred_label']]
                 sents = kbp_sent_dic[sample['doc_id']]
                 mentions, mention_pos = [], []
                 for event in sample['pred_label']:
@@ -304,7 +306,7 @@ if __name__ == '__main__':
                     mentions.append(e_sent)
                     mention_pos.append([e_new_start, e_new_end])
                 new_events, predictions, probabilities = predict(
-                    args, sample['document'], events, mentions, mention_pos, model, tokenizer, mention_tokenizer
+                    args, sample['document'], events, event_w2vs, mentions, mention_pos, model, tokenizer, mention_tokenizer
                 )
                 results.append({
                     "doc_id": sample['doc_id'], 

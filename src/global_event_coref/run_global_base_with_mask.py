@@ -81,8 +81,8 @@ def test_loop(args, dataloader, model):
 
 def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer):
     """ Train the model """
-    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mask_subtype')
-    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mask_subtype')
+    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mask')
+    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mask')
     t_total = len(train_dataloader) * args.num_train_epochs
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -208,7 +208,7 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
 def test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(
         args, test_dataset, tokenizer, mention_tokenizer, batch_size=1, shuffle=False, 
-        collote_fn_type='with_mask_subtype'
+        collote_fn_type='with_mask'
     )
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
