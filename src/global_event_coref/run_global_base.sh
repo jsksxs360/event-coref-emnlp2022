@@ -1,11 +1,9 @@
 export OUTPUT_DIR=./longformer_multi_dist_with_cont_results/
-export CACHE_DIR=../../cache/
 
 python3 run_global_base.py \
     --output_dir=$OUTPUT_DIR \
-    --cache_dir=$CACHE_DIR \
     --model_type=longformer \
-    --model_checkpoint=allenai/longformer-large-4096 \
+    --model_checkpoint=../../../PT_MODELS/allenai/longformer-large-4096/ \
     --train_file=../../data/train_filtered.json \
     --dev_file=../../data/dev_filtered.json \
     --test_file=../../data/test_filtered.json \

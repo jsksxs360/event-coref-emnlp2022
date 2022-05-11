@@ -20,8 +20,7 @@ def parse_args():
     )
     parser.add_argument("--max_seq_length", default=4096, type=int, required=True)
     parser.add_argument("--matching_style", default="multi", type=str, required=True, 
-        help="how to match two event representations", 
-        choices=['base', 'multi', 'dist', 'multi_dist']
+        help="how to match two event representations"
     )
     
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
@@ -33,13 +32,14 @@ def parse_args():
     parser.add_argument("--cache_dir", default=None, type=str,
         help="Where do you want to store the pre-trained models downloaded from s3"
     )
-    parser.add_argument("--w2v_model_path", default=None, type=str)
-    parser.add_argument("--w2v_dim", default=300, type=int)
+    parser.add_argument("--topic_dim", default=256, type=int)
+    parser.add_argument("--topic_inter_map", default=512, type=int)
     parser.add_argument("--mention_encoder_type", default="bert", type=str)
     parser.add_argument("--mention_encoder_checkpoint",
         default="bert-large-cased", type=str, 
         help="Path to pretrained model or model identifier from huggingface.co/models",
     )
+    parser.add_argument("--include_mention_context", action="store_true")
     parser.add_argument("--max_mention_length", default=512, type=int)
     parser.add_argument("--add_contrastive_loss", action="store_true")
     parser.add_argument("--softmax_loss", default='ce', type=str,

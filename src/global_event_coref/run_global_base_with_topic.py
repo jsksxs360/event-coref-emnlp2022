@@ -1,21 +1,19 @@
 import logging
 from tqdm.auto import tqdm
 import json
-from collections import namedtuple, defaultdict
+from collections import defaultdict, namedtuple
 import torch
 from transformers import AdamW, get_scheduler
 from transformers import AutoConfig, AutoTokenizer
 import numpy as np
-from gensim.models import KeyedVectors
 from sklearn.metrics import classification_report
 import os
 import sys
 sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
 from src.global_event_coref.arg import parse_args
-from src.global_event_coref.data import KBPCorefWithW2V, get_dataLoader, NO_CUTE, cut_sent, SUBTYPES
-from src.global_event_coref.data import get_trigger_vector
-from src.global_event_coref.modeling import LongformerSoftmaxForECwithMentionMaskAndW2V
+from src.global_event_coref.data import KBPCoref, get_dataLoader, vocab, VOCAB_SIZE
+from src.global_event_coref.modeling import LongformerSoftmaxForECwithTopic
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -26,19 +24,14 @@ Sentence = namedtuple("Sentence", ["start", "text"])
 def to_device(args, batch_data):
     new_batch_data = {}
     for k, v in batch_data.items():
-        if k in ['batch_events', 'batch_mention_events', 'batch_event_cluster_ids', 'batch_event_subtypes']:
+        if k in ['batch_events', 'batch_event_cluster_ids']:
             new_batch_data[k] = v
-        elif k == 'batch_event_w2vs':
-            new_batch_data[k] = [torch.tensor(event_w2vs, dtype=torch.float32).to(args.device) for event_w2vs in v]
+        elif k == 'batch_event_dists':
+            new_batch_data[k] = [torch.tensor(event_dists, dtype=torch.float32).to(args.device) for event_dists in v]
         elif k == 'batch_inputs':
             new_batch_data[k] = {
                 k_: v_.to(args.device) for k_, v_ in v.items()
             }
-        elif k in ['batch_mention_inputs', 'batch_mention_inputs_with_mask']:
-            new_batch_data[k] = [
-                {k_: v_.to(args.device) for k_, v_ in inputs.items()} 
-                for inputs in v
-            ]
     return new_batch_data
 
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
@@ -83,10 +76,10 @@ def test_loop(args, dataloader, model):
             ]
     return classification_report(true_labels, true_predictions, output_dict=True)
 
-def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer):
+def train(args, train_dataset, dev_dataset, model, tokenizer):
     """ Train the model """
-    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, mention_tokenizer, shuffle=True, collote_fn_type='with_mention_mask_w2v')
-    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, mention_tokenizer, shuffle=False, collote_fn_type='with_mention_mask_w2v')
+    train_dataloader = get_dataLoader(args, train_dataset, tokenizer, shuffle=True, collote_fn_type='with_dist')
+    dev_dataloader = get_dataLoader(args, dev_dataset, tokenizer, shuffle=False, collote_fn_type='with_dist')
     t_total = len(train_dataloader) * args.num_train_epochs
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -114,7 +107,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
     logger.info(f"Total optimization steps - {t_total}")
     with open(os.path.join(args.output_dir, 'args.txt'), 'wt') as f:
         f.write(str(args))
-
+    
     total_loss = 0.
     best_f1 = 0.
     save_weights = []
@@ -133,20 +126,14 @@ def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")
-    return save_weights
 
-def predict(args, document:str, events:list, event_w2vs:list, mentions:list, mention_pos:list, model, tokenizer, mention_tokenizer):
+def predict(args, document:str, events:list, event_dists:list, model, tokenizer):
     '''
     # Args:
         - events: [
             [e_char_start, e_char_end], ...
         ], document[e1_char_start:e1_char_end + 1] = trigger1
-        - mentions: event mentions
-        - mention_pos: [
-            [e_mention_char_start, e_mention_char_end], ...
-        ]
     '''
-    assert len(events) == len(mentions) == len(mention_pos)
     inputs = tokenizer(
         document, 
         max_length=args.max_seq_length, 
@@ -155,10 +142,8 @@ def predict(args, document:str, events:list, event_w2vs:list, mentions:list, men
     )
     filtered_events = []
     new_events = []
-    filtered_w2vs = []
-    filtered_mentions = []
-    filtered_mention_events = []
-    for event, event_w2v, mention, mention_pos in zip(events, event_w2vs, mentions, mention_pos):
+    filtered_dists = []
+    for event, event_dist in zip(events, event_dists):
         char_start, char_end = event
         token_start = inputs.char_to_token(char_start)
         if not token_start:
@@ -166,49 +151,15 @@ def predict(args, document:str, events:list, event_w2vs:list, mentions:list, men
         token_end = inputs.char_to_token(char_end)
         if not token_start or not token_end:
             continue
-        # cut long mention for Roberta-like model
-        mention_char_start, mention_char_end = mention_pos
-        if args.mention_encoder_type not in NO_CUTE:
-            max_length = (args.max_mention_length - 50) // 2
-            mention, mention_char_start, mention_char_end = cut_sent(
-                mention, mention_char_start, mention_char_end, max_length
-            )
-        mention_encoding = mention_tokenizer(mention, max_length=args.max_mention_length, truncation=True)
-        mention_token_start = mention_encoding.char_to_token(mention_char_start)
-        if not mention_token_start:
-            mention_token_start = mention_encoding.char_to_token(mention_char_start + 1)
-        mention_token_end = mention_encoding.char_to_token(mention_char_end)
-        assert mention_token_start and mention_token_end
         filtered_events.append([token_start, token_end])
         new_events.append(event)
-        filtered_w2vs.append(event_w2v)
-        filtered_mentions.append(mention)
-        filtered_mention_events.append([mention_token_start, mention_token_end])
-    filtered_mention_inputs = mention_tokenizer(
-        filtered_mentions, 
-        max_length=args.max_mention_length, 
-        padding=True, 
-        truncation=True, 
-        return_tensors="pt"
-    )
-    filtered_mention_inputs_with_mask = mention_tokenizer(
-        filtered_mentions, 
-        max_length=args.max_mention_length, 
-        padding=True, 
-        truncation=True, 
-        return_tensors="pt"
-    )
-    for e_idx, (e_start, e_end) in enumerate(filtered_mention_events):
-        filtered_mention_inputs_with_mask['input_ids'][e_idx][e_start:e_end+1] = mention_tokenizer.mask_token_id
+        filtered_dists.append(event_dist)
     if not new_events:
         return [], [], []
     inputs = {
         'batch_inputs': inputs, 
         'batch_events': [filtered_events], 
-        'batch_event_w2vs': [np.asarray(filtered_w2vs)], 
-        'batch_mention_inputs': [filtered_mention_inputs], 
-        'batch_mention_inputs_with_mask': [filtered_mention_inputs_with_mask], 
-        'batch_mention_events': [filtered_mention_events]
+        'batch_event_dists': [np.asarray(filtered_dists)]
     }
     inputs = to_device(args, inputs)
     with torch.no_grad():
@@ -220,10 +171,10 @@ def predict(args, document:str, events:list, event_w2vs:list, mentions:list, men
     assert len(predictions) == len(new_events) * (len(new_events) - 1) / 2
     return new_events, predictions, probabilities
 
-def test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights:list):
+def test(args, test_dataset, model, tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(
-        args, test_dataset, tokenizer, mention_tokenizer, batch_size=1, shuffle=False, 
-        collote_fn_type='with_mention_mask_w2v'
+        args, test_dataset, tokenizer, batch_size=1, shuffle=False, 
+        collote_fn_type='with_dist'
     )
     logger.info('***** Running testing *****')
     for save_weight in save_weights:
@@ -233,12 +184,16 @@ def test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights:l
         with open(os.path.join(args.output_dir, 'test_metrics.txt'), 'at') as f:
             f.write(f'{save_weight}\n{json.dumps(metrics, cls=NpEncoder)}\n\n')
 
-def get_event_sent(e_start, e_end, sents):
-    for sent in sents:
+def get_event_dist(e_start, e_end, sents):
+    for s_idx, sent in enumerate(sents):
         sent_end = sent.start + len(sent.text) - 1
         if e_start >= sent.start and e_end <= sent_end:
-            return sent.text, e_start - sent.start,  e_end - sent.start
-    return None, None, None
+            before = sents[s_idx - 1].text if s_idx > 0 else ''
+            after = sents[s_idx + 1].text if s_idx < len(sents) - 1 else ''
+            event_mention = before + (' ' if len(before) > 0 else '') + sent.text + ' ' + after
+            event_mention = event_mention.lower()
+            return [1 if w in event_mention else 0 for w in vocab]
+    return None
 
 if __name__ == '__main__':
     args = parse_args()
@@ -253,34 +208,29 @@ if __name__ == '__main__':
     # Set seed
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
-    logger.info(f'loading pretrained model and tokenizer of {args.model_type} & {args.mention_encoder_type}...')
     logger.info(f'using model {"with" if args.add_contrastive_loss else "without"} Contrastive loss')
+    logger.info(f'loading pretrained model and tokenizer of {args.model_type} ...')
     main_config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
-    encoder_config = AutoConfig.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
-    mention_tokenizer = AutoTokenizer.from_pretrained(args.mention_encoder_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
-    args.num_subtypes = len(SUBTYPES) + 1
-    model = LongformerSoftmaxForECwithMentionMaskAndW2V.from_pretrained(
+    args.dist_dim = VOCAB_SIZE
+    model = LongformerSoftmaxForECwithTopic.from_pretrained(
         args.model_checkpoint,
         config=main_config,
-        encoder_config=encoder_config, 
         cache_dir=args.cache_dir,
         args=args
     ).to(args.device)
-    logger.info(f'loading Word2Vector model...')
-    W2V = KeyedVectors.load_word2vec_format(args.w2v_model_path, binary=True, unicode_errors='ignore')
     # Training
     save_weights = []
     if args.do_train:
-        logger.info(f'Training/evaluation parameters: {args}')
-        train_dataset = KBPCorefWithW2V(args.train_file, W2V)
-        dev_dataset = KBPCorefWithW2V(args.dev_file, W2V)
-        save_weights = train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
+        train_dataset = KBPCoref(args.train_file)
+        dev_dataset = KBPCoref(args.dev_file)
+        train(args, train_dataset, dev_dataset, model, tokenizer)
     # Testing
+    save_weights = [file for file in os.listdir(args.output_dir) if file.endswith('.bin')]
     if args.do_test:
-        test_dataset = KBPCorefWithW2V(args.test_file, W2V)
-        test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights)
+        test_dataset = KBPCoref(args.test_file)
+        test(args, test_dataset, model, tokenizer, save_weights)
     # Predicting
     if args.do_predict:
         kbp_sent_dic = defaultdict(list) # {filename: [Sentence]}
@@ -289,46 +239,44 @@ if __name__ == '__main__':
                 doc_id, start, text = line.strip().split('\t')
                 kbp_sent_dic[doc_id].append(Sentence(int(start), text))
 
-        best_save_weight = 'XXX_weights.bin'
         pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
 
-        logger.info(f'loading weights from {best_save_weight}...')
-        model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
-        logger.info(f'predicting coref labels of {best_save_weight}...')
-        
-        results = []
-        model.eval()
-        with open(os.path.join(args.output_dir, pred_event_file), 'rt' , encoding='utf-8') as f_in:
-            for line in tqdm(f_in.readlines()):
-                sample = json.loads(line.strip())
-                events = [
-                    [event['start'], event['start'] + len(event['trigger']) - 1] 
-                    for event in sample['pred_label']
-                ]
-                event_w2vs = [get_trigger_vector(W2V, event['trigger'], 300) for event in sample['pred_label']]
-                sents = kbp_sent_dic[sample['doc_id']]
-                mentions, mention_pos = [], []
-                for event in sample['pred_label']:
-                    e_sent, e_new_start, e_new_end = get_event_sent(event['start'], event['start'] + len(event['trigger']) - 1, sents)
-                    assert e_sent is not None and e_sent[e_new_start:e_new_end+1] == event['trigger']
-                    mentions.append(e_sent)
-                    mention_pos.append([e_new_start, e_new_end])
-                new_events, predictions, probabilities = predict(
-                    args, sample['document'], events, event_w2vs, mentions, mention_pos, model, tokenizer, mention_tokenizer
-                )
-                results.append({
-                    "doc_id": sample['doc_id'], 
-                    "document": sample['document'], 
-                    "events": [
-                        {
-                            'start': char_start, 
-                            'end': char_end, 
-                            'trigger': sample['document'][char_start:char_end+1]
-                        } for char_start, char_end in new_events
-                    ], 
-                    "pred_label": predictions, 
-                    "pred_prob": probabilities
-                })
-        with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
-            for exapmle_result in results:
-                f.write(json.dumps(exapmle_result) + '\n')
+        for best_save_weight in save_weights:
+            logger.info(f'loading weights from {best_save_weight}...')
+            model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
+            logger.info(f'predicting coref labels of {best_save_weight}...')
+            
+            results = []
+            model.eval()
+            with open(os.path.join(args.output_dir, pred_event_file), 'rt' , encoding='utf-8') as f_in:
+                for line in tqdm(f_in.readlines()):
+                    sample = json.loads(line.strip())
+                    events = [
+                        [event['start'], event['start'] + len(event['trigger']) - 1] 
+                        for event in sample['pred_label']
+                    ]
+                    sents = kbp_sent_dic[sample['doc_id']]
+                    event_dists = []
+                    for event in sample['pred_label']:
+                        e_dist = get_event_dist(event['start'], event['start'] + len(event['trigger']) - 1, sents)
+                        assert e_dist is not None
+                        event_dists.append(e_dist)
+                    new_events, predictions, probabilities = predict(
+                        args, sample['document'], events, event_dists, model, tokenizer
+                    )
+                    results.append({
+                        "doc_id": sample['doc_id'], 
+                        "document": sample['document'], 
+                        "events": [
+                            {
+                                'start': char_start, 
+                                'end': char_end, 
+                                'trigger': sample['document'][char_start:char_end+1]
+                            } for char_start, char_end in new_events
+                        ], 
+                        "pred_label": predictions, 
+                        "pred_prob": probabilities
+                    })
+            with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
+                for exapmle_result in results:
+                    f.write(json.dumps(exapmle_result) + '\n')

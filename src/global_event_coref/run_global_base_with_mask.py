@@ -12,7 +12,7 @@ import sys
 sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
 from src.global_event_coref.arg import parse_args
-from src.global_event_coref.data import KBPCoref, get_dataLoader, NO_CUTE, cut_sent, SUBTYPES
+from src.global_event_coref.data import KBPCoref, get_dataLoader, cut_sent, SUBTYPES
 from src.global_event_coref.modeling import LongformerSoftmaxForECwithMask
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
@@ -126,6 +126,11 @@ def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
             save_weights.append(save_weight)
+        elif 100 * dev_p > 70 and 100 * dev_r > 70:
+            logger.info(f'saving new weights to {args.output_dir}...\n')
+            save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
+            torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
+            save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")
@@ -161,13 +166,10 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, mo
         token_end = inputs.char_to_token(char_end)
         if not token_start or not token_end:
             continue
-        # cut long mention for Roberta-like model
         mention_char_start, mention_char_end = mention_pos
-        if args.mention_encoder_type not in NO_CUTE:
-            max_length = (args.max_mention_length - 50) // 2
-            mention, mention_char_start, mention_char_end = cut_sent(
-                mention, mention_char_start, mention_char_end, max_length
-            )
+        mention, mention_char_start, mention_char_end = cut_sent(
+            mention, mention_char_start, mention_char_end, args.max_mention_length
+        )
         mention_encoding = mention_tokenizer(mention, max_length=args.max_mention_length, truncation=True)
         mention_token_start = mention_encoding.char_to_token(mention_char_start)
         if not mention_token_start:
@@ -256,13 +258,13 @@ if __name__ == '__main__':
     # Training
     save_weights = []
     if args.do_train:
-        logger.info(f'Training/evaluation parameters: {args}')
-        train_dataset = KBPCoref(args.train_file)
-        dev_dataset = KBPCoref(args.dev_file)
+        train_dataset = KBPCoref(args.train_file, include_mention_context=args.include_mention_context)
+        dev_dataset = KBPCoref(args.dev_file, include_mention_context=args.include_mention_context)
         save_weights = train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
     # Testing
+    save_weights = [file for file in os.listdir(args.output_dir) if file.endswith('.bin')]
     if args.do_test:
-        test_dataset = KBPCoref(args.test_file)
+        test_dataset = KBPCoref(args.test_file, include_mention_context=args.include_mention_context)
         test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights)
     # Predicting
     if args.do_predict:
@@ -272,45 +274,45 @@ if __name__ == '__main__':
                 doc_id, start, text = line.strip().split('\t')
                 kbp_sent_dic[doc_id].append(Sentence(int(start), text))
 
-        best_save_weight = 'XXX_weights.bin'
         pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
 
-        logger.info(f'loading weights from {best_save_weight}...')
-        model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
-        logger.info(f'predicting coref labels of {best_save_weight}...')
-        
-        results = []
-        model.eval()
-        with open(os.path.join(args.output_dir, pred_event_file), 'rt' , encoding='utf-8') as f_in:
-            for line in tqdm(f_in.readlines()):
-                sample = json.loads(line.strip())
-                events = [
-                    [event['start'], event['start'] + len(event['trigger']) - 1] 
-                    for event in sample['pred_label']
-                ]
-                sents = kbp_sent_dic[sample['doc_id']]
-                mentions, mention_pos = [], []
-                for event in sample['pred_label']:
-                    e_sent, e_new_start, e_new_end = get_event_sent(event['start'], event['start'] + len(event['trigger']) - 1, sents)
-                    assert e_sent is not None and e_sent[e_new_start:e_new_end+1] == event['trigger']
-                    mentions.append(e_sent)
-                    mention_pos.append([e_new_start, e_new_end])
-                new_events, predictions, probabilities = predict(
-                    args, sample['document'], events, mentions, mention_pos, model, tokenizer, mention_tokenizer
-                )
-                results.append({
-                    "doc_id": sample['doc_id'], 
-                    "document": sample['document'], 
-                    "events": [
-                        {
-                            'start': char_start, 
-                            'end': char_end, 
-                            'trigger': sample['document'][char_start:char_end+1]
-                        } for char_start, char_end in new_events
-                    ], 
-                    "pred_label": predictions, 
-                    "pred_prob": probabilities
-                })
-        with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
-            for exapmle_result in results:
-                f.write(json.dumps(exapmle_result) + '\n')
+        for best_save_weight in save_weights:
+            logger.info(f'loading weights from {best_save_weight}...')
+            model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
+            logger.info(f'predicting coref labels of {best_save_weight}...')
+            
+            results = []
+            model.eval()
+            with open(os.path.join(args.output_dir, pred_event_file), 'rt' , encoding='utf-8') as f_in:
+                for line in tqdm(f_in.readlines()):
+                    sample = json.loads(line.strip())
+                    events = [
+                        [event['start'], event['start'] + len(event['trigger']) - 1] 
+                        for event in sample['pred_label']
+                    ]
+                    sents = kbp_sent_dic[sample['doc_id']]
+                    mentions, mention_pos = [], []
+                    for event in sample['pred_label']:
+                        e_sent, e_new_start, e_new_end = get_event_sent(event['start'], event['start'] + len(event['trigger']) - 1, sents)
+                        assert e_sent is not None and e_sent[e_new_start:e_new_end+1] == event['trigger']
+                        mentions.append(e_sent)
+                        mention_pos.append([e_new_start, e_new_end])
+                    new_events, predictions, probabilities = predict(
+                        args, sample['document'], events, mentions, mention_pos, model, tokenizer, mention_tokenizer
+                    )
+                    results.append({
+                        "doc_id": sample['doc_id'], 
+                        "document": sample['document'], 
+                        "events": [
+                            {
+                                'start': char_start, 
+                                'end': char_end, 
+                                'trigger': sample['document'][char_start:char_end+1]
+                            } for char_start, char_end in new_events
+                        ], 
+                        "pred_label": predictions, 
+                        "pred_prob": probabilities
+                    })
+            with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
+                for exapmle_result in results:
+                    f.write(json.dumps(exapmle_result) + '\n')

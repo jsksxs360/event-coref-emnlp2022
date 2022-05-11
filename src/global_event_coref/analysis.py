@@ -1,3 +1,5 @@
+import json
+
 WRONG_TYPE = {
     0: 'recognize_non-coref_as_coref', 
     1: 'recognize_coref_as_non-coref'
@@ -25,14 +27,23 @@ def get_coref_answer(clusters, e1_id, e2_id):
             return 0
     return 0
 
-def get_wrong_samples(doc_id, new_events, predictions, source_events, clusters, sentences):
+def get_wrong_samples(doc_id, new_events, predictions, source_events, clusters, sentences, pred_event_filepath):
     wrong_1_list, wrong_2_list = [], []
+
+    pred_event_dict = {}
+    with open(pred_event_filepath, 'rt' , encoding='utf-8') as f_in:
+        for line in f_in.readlines():
+            sample = json.loads(line.strip())
+            pred_event_dict[sample['doc_id']] = [event['start'] for event in sample['pred_label']]
     
     idx = 0
     true_labels = []
     for i in range(len(new_events) - 1):
         for j in range(i + 1, len(new_events)):
             e1_start, e2_start = new_events[i][0], new_events[j][0]
+            if e1_start not in pred_event_dict[doc_id] or e2_start not in pred_event_dict[doc_id]:
+                idx += 1
+                continue
             e1 = find_event_by_start(source_events, e1_start)
             e2 = find_event_by_start(source_events, e2_start)
             pred_coref = predictions[idx]

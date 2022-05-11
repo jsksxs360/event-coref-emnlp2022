@@ -117,6 +117,11 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
             save_weights.append(save_weight)
+        elif 100*dev_p > 70 and 100*dev_r > 70:
+            logger.info(f'saving new weights to {args.output_dir}...\n')
+            save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
+            torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
+            save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")
@@ -140,8 +145,10 @@ def predict(args, document:str, events:list, model, tokenizer):
     for event in events:
         char_start, char_end = event
         token_start = inputs.char_to_token(char_start)
+        if not token_start:
+            token_start = inputs.char_to_token(char_start + 1)
         token_end = inputs.char_to_token(char_end)
-        if not token_end:
+        if not token_start or not token_end:
             continue
         filtered_events.append([token_start, token_end])
         new_events.append(event)
@@ -181,8 +188,8 @@ if __name__ == '__main__':
     # Set seed
     seed_everything(args.seed)
     # Load pretrained model and tokenizer
-    logger.info(f'loading pretrained model and tokenizer of {args.model_type} ...')
     logger.info(f'using model {"with" if args.add_contrastive_loss else "without"} Contrastive loss')
+    logger.info(f'loading pretrained model and tokenizer of {args.model_type} ...')
     config = AutoConfig.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir, )
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
@@ -195,52 +202,54 @@ if __name__ == '__main__':
     # Training
     save_weights = []
     if args.do_train:
-        logger.info(f'Training/evaluation parameters: {args}')
         train_dataset = KBPCoref(args.train_file)
         dev_dataset = KBPCoref(args.dev_file)
         save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
     # Testing
+    save_weights = [file for file in os.listdir(args.output_dir) if file.endswith('.bin')]
     if args.do_test:
         test_dataset = KBPCoref(args.test_file)
         test(args, test_dataset, model, tokenizer, save_weights)
     # Predicting
     if args.do_predict:
-        best_save_weight = 'XXX_weights.bin'
         pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
         
-        logger.info(f'loading weights from {best_save_weight}...')
-        model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
-        logger.info(f'predicting coref labels of {best_save_weight}...')
-        results = []
-        model.eval()
-        pred_event_filepath = os.path.join(args.output_dir, pred_event_file)
-        with open(pred_event_filepath, 'rt' , encoding='utf-8') as f_in:
-            for line in tqdm(f_in.readlines()):
-                sample = json.loads(line.strip())
-                events = [
-                    [event['start'], event['start'] + len(event['trigger']) - 1] 
-                    for event in sample['pred_label']
-                ]
-                new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
-                results.append({
-                    "doc_id": sample['doc_id'], 
-                    "document": sample['document'], 
-                    "events": [
-                        {
-                            'start': char_start, 
-                            'end': char_end, 
-                            'trigger': sample['document'][char_start:char_end+1]
-                        } for char_start, char_end in new_events
-                    ], 
-                    "pred_label": predictions, 
-                    "pred_prob": probabilities
-                })
-        with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
-            for exapmle_result in results:
-                f.write(json.dumps(exapmle_result) + '\n')
+        for best_save_weight in save_weights:
+            logger.info(f'loading weights from {best_save_weight}...')
+            model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
+            logger.info(f'predicting coref labels of {best_save_weight}...')
+            results = []
+            model.eval()
+            with open(os.path.join(args.output_dir, pred_event_file), 'rt' , encoding='utf-8') as f_in:
+                for line in tqdm(f_in.readlines()):
+                    sample = json.loads(line.strip())
+                    events = [
+                        [event['start'], event['start'] + len(event['trigger']) - 1] 
+                        for event in sample['pred_label']
+                    ]
+                    new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
+                    results.append({
+                        "doc_id": sample['doc_id'], 
+                        "document": sample['document'], 
+                        "events": [
+                            {
+                                'start': char_start, 
+                                'end': char_end, 
+                                'trigger': sample['document'][char_start:char_end+1]
+                            } for char_start, char_end in new_events
+                        ], 
+                        "pred_label": predictions, 
+                        "pred_prob": probabilities
+                    })
+            with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
+                for exapmle_result in results:
+                    f.write(json.dumps(exapmle_result) + '\n')
     # Analysis
     if args.do_analysis:
-        analysis_weight = 'epoch_12_dev_f1_67.1188_weights.bin'
+        pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
+        pred_event_filepath = os.path.join(args.output_dir, pred_event_file)
+        
+        analysis_weight = 'XXX_weights.bin'
         logger.info(f'loading weights from {analysis_weight}...')
         model.load_state_dict(torch.load(os.path.join(args.output_dir, analysis_weight)))
         logger.info(f'predicting coref labels of {analysis_weight}...')
@@ -259,7 +268,8 @@ if __name__ == '__main__':
                 wrong_1_list, wrong_2_list, true_labels = get_wrong_samples(
                     sample['doc_id'], 
                     new_events, predictions, 
-                    sample['events'], sample['clusters'], sample['sentences']
+                    sample['events'], sample['clusters'], sample['sentences'], 
+                    pred_event_filepath
                 )
                 all_labels += true_labels
                 all_wrong_1 += wrong_1_list
