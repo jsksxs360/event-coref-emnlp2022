@@ -1,4 +1,4 @@
-export OUTPUT_DIR=./TD_CR_CONT/
+export OUTPUT_DIR=./TEMP/
 
 python3 run_cluster.py \
     --output_dir=$OUTPUT_DIR \

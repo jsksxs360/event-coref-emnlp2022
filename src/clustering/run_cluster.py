@@ -1,4 +1,5 @@
 import os
+import shutil
 import logging
 from tqdm.auto import tqdm
 import json
@@ -82,4 +83,4 @@ if __name__ == '__main__':
         logger.info(results)
         with open(os.path.join(args.output_dir, 'evaluate_results.json'), 'wt', encoding='utf-8') as f:
             f.write(json.dumps(results) + '\n')
-
+    shutil.rmtree(args.output_dir)
