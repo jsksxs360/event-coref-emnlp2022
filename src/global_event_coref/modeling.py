@@ -118,8 +118,8 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
             )
         return batch_seq_reps
 
-    def forward(self, input_ids, attention_mask, batch_events, batch_event_cluster_ids=None):
-        outputs = self.longformer(input_ids, attention_mask=attention_mask)
+    def forward(self, batch_inputs, batch_events, batch_event_cluster_ids=None):
+        outputs = self.longformer(**batch_inputs)
         sequence_output = outputs[0]
         sequence_output = self.dropout(sequence_output)
         # construct event pairs (event_1, event_2)

@@ -1,4 +1,4 @@
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import json
@@ -138,9 +138,11 @@ def get_dataLoader(args, dataset, tokenizer, mention_tokenizer=None, batch_size=
                 filtered_event_cluster_id.append(e['cluster_id'])
             batch_filtered_events.append(filtered_events)
             batch_filtered_event_cluster_id.append(filtered_event_cluster_id)
-        batch_inputs['batch_events'] = batch_filtered_events
-        batch_inputs['batch_event_cluster_ids'] = batch_filtered_event_cluster_id
-        return batch_inputs
+        return {
+            'batch_inputs': batch_inputs, 
+            'batch_events': batch_filtered_events, 
+            'batch_event_cluster_ids': batch_filtered_event_cluster_id
+        }
     
     def collote_fn_with_dist(batch_samples):
         batch_sentences, batch_events, batch_event_dists = [], [], []

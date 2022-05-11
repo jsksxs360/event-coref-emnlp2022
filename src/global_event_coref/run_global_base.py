@@ -20,13 +20,16 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
                     level=logging.INFO)
 logger = logging.getLogger("Model")
 
-NO_TENSOR = ['batch_events', 'batch_event_cluster_ids']
-
 def to_device(args, batch_data):
-    return {
-        k: v if k in NO_TENSOR else v.to(args.device) 
-        for k, v in batch_data.items()
-    }
+    new_batch_data = {}
+    for k, v in batch_data.items():
+        if k in ['batch_events', 'batch_event_cluster_ids']:
+            new_batch_data[k] = v
+        elif k == 'batch_inputs':
+            new_batch_data[k] = {
+                k_: v_.to(args.device) for k_, v_ in v.items()
+            }
+    return new_batch_data
 
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))
