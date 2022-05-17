@@ -1,9 +1,10 @@
-export OUTPUT_DIR=./longformer_results/
+export OUTPUT_DIR=./Topic_M-multi-cosine_closs_results/
 
 python3 run_global_base_with_topic.py \
     --output_dir=$OUTPUT_DIR \
     --model_type=longformer \
     --model_checkpoint=../../../PT_MODELS/allenai/longformer-large-4096/ \
+    --topic_model=vmf \
     --topic_dim=32 \
     --topic_inter_map=64 \
     --train_file=../../data/train_filtered.json \

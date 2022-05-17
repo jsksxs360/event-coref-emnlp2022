@@ -32,6 +32,9 @@ def parse_args():
     parser.add_argument("--cache_dir", default=None, type=str,
         help="Where do you want to store the pre-trained models downloaded from s3"
     )
+    parser.add_argument("--topic_model", default='stm', type=str, 
+        choices=['stm', 'stm_bn', 'vmf']
+    )
     parser.add_argument("--topic_dim", default=256, type=int)
     parser.add_argument("--topic_inter_map", default=512, type=int)
     parser.add_argument("--mention_encoder_type", default="bert", type=str)

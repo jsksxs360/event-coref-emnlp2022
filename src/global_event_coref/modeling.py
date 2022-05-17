@@ -6,11 +6,16 @@ from transformers import LongformerPreTrainedModel, LongformerModel
 from transformers import BertModel, RobertaModel
 from allennlp.modules.span_extractors import SelfAttentiveSpanExtractor
 from ..tools import LabelSmoothingCrossEntropy, FocalLoss
-from ..tools import SimpleTopicModelwithBN as SimpleTopicModel
+from ..tools import SimpleTopicModel, SimpleTopicModelwithBN, SimpleTopicVMFModel
 
 MENTION_ENCODER = {
     'bert': BertModel, 
     'roberta': RobertaModel
+}
+TOPIC_MODEL = {
+    'stm': SimpleTopicModel, 
+    'stm_bn': SimpleTopicModelwithBN, 
+    'vmf': SimpleTopicVMFModel
 }
 COSINE_SPACE_DIM = 64
 COSINE_SLICES = 128
@@ -201,7 +206,7 @@ class LongformerSoftmaxForECwithTopic(LongformerPreTrainedModel):
         self.longformer = LongformerModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.topic_model = SimpleTopicModel(args=args)
+        self.topic_model = TOPIC_MODEL[args.topic_model](args=args)
         # event matching
         self.matching_style = args.matching_style
         if 'cosine' not in self.matching_style:
@@ -681,7 +686,7 @@ class LongformerSoftmaxForECwithMaskTopic(LongformerPreTrainedModel):
         self.mention_dropout = nn.Dropout(encoder_config.hidden_dropout_prob)
         self.mention_span_extractor = SelfAttentiveSpanExtractor(input_dim=self.mention_encoder_dim)
         self.subtype_classifier = nn.Linear(self.mention_encoder_dim, self.num_subtypes)
-        self.topic_model = SimpleTopicModel(args=args)
+        self.topic_model = TOPIC_MODEL[args.topic_model](args=args)
         # event matching
         self.matching_style = args.matching_style
         if 'cosine' not in self.matching_style:

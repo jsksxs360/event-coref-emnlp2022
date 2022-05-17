@@ -1,4 +1,4 @@
-export OUTPUT_DIR=./longformer_bert_results/
+export OUTPUT_DIR=./MaskTopic_M-multi-cosine_closs_results/
 
 python3 run_global_base_with_mask_topic.py \
     --output_dir=$OUTPUT_DIR \
@@ -6,6 +6,7 @@ python3 run_global_base_with_mask_topic.py \
     --model_checkpoint=../../../PT_MODELS/allenai/longformer-large-4096/ \
     --mention_encoder_type=bert \
     --mention_encoder_checkpoint=../../../PT_MODELS/bert-base-cased/ \
+    --topic_model=vmf \
     --topic_dim=32 \
     --topic_inter_map=64 \
     --train_file=../../data/train_filtered.json \
@@ -15,7 +16,7 @@ python3 run_global_base_with_mask_topic.py \
     --max_mention_length=256 \
     --learning_rate=1e-5 \
     --add_contrastive_loss \
-    --matching_style=multi \
+    --matching_style=multi_cosine \
     --softmax_loss=ce \
     --num_train_epochs=50 \
     --batch_size=1 \

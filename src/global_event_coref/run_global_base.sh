@@ -1,4 +1,4 @@
-export OUTPUT_DIR=./M-multi-cosine_closs_results/
+export OUTPUT_DIR=./M-multi-cosine_results/
 
 python3 run_global_base.py \
     --output_dir=$OUTPUT_DIR \

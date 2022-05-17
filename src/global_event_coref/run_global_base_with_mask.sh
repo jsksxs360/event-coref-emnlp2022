@@ -1,4 +1,4 @@
-export OUTPUT_DIR=./longformer_bert_results/
+export OUTPUT_DIR=./Mask_M-multi-cosine_closs_results/
 
 python3 run_global_base_with_mask.py \
     --output_dir=$OUTPUT_DIR \
@@ -13,8 +13,7 @@ python3 run_global_base_with_mask.py \
     --max_mention_length=256 \
     --learning_rate=1e-5 \
     --add_contrastive_loss \
-    --include_mention_context \
-    --matching_style=multi \
+    --matching_style=multi_cosine \
     --softmax_loss=ce \
     --num_train_epochs=50 \
     --batch_size=1 \

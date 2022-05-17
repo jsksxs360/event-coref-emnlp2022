@@ -126,7 +126,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
             save_weights.append(save_weight)
-        elif 100 * dev_p > 70 and 100 * dev_r > 70:
+        elif 100 * dev_p > 69 and 100 * dev_r > 69:
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
