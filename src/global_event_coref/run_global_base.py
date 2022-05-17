@@ -168,7 +168,8 @@ def predict(args, document:str, events:list, model, tokenizer):
     predictions = logits.argmax(dim=-1)[0].cpu().numpy().tolist()
     probabilities = torch.nn.functional.softmax(logits, dim=-1)[0].cpu().numpy().tolist()
     probabilities = [probabilities[idx][pred] for idx, pred in enumerate(predictions)]
-    assert len(predictions) == len(new_events) * (len(new_events) - 1) / 2
+    if len(new_events) > 1:
+        assert len(predictions) == len(new_events) * (len(new_events) - 1) / 2
     return new_events, predictions, probabilities
 
 def test(args, test_dataset, model, tokenizer, save_weights:list):
