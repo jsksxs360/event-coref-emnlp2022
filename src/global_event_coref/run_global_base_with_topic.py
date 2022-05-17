@@ -27,7 +27,10 @@ def to_device(args, batch_data):
         if k in ['batch_events', 'batch_event_cluster_ids']:
             new_batch_data[k] = v
         elif k == 'batch_event_dists':
-            new_batch_data[k] = [torch.tensor(event_dists, dtype=torch.float32).to(args.device) for event_dists in v]
+            new_batch_data[k] = [
+                torch.tensor(event_dists, dtype=torch.float32).to(args.device) 
+                for event_dists in v
+            ]
         elif k == 'batch_inputs':
             new_batch_data[k] = {
                 k_: v_.to(args.device) for k_, v_ in v.items()
@@ -123,17 +126,17 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
             save_weights.append(save_weight)
+        elif 100 * dev_p > 69 and 100 * dev_r > 69:
+            logger.info(f'saving new weights to {args.output_dir}...\n')
+            save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
+            torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
+            save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")
 
 def predict(args, document:str, events:list, event_dists:list, model, tokenizer):
-    '''
-    # Args:
-        - events: [
-            [e_char_start, e_char_end], ...
-        ], document[e1_char_start:e1_char_end + 1] = trigger1
-    '''
+    assert len(events) == len(event_dists)
     inputs = tokenizer(
         document, 
         max_length=args.max_seq_length, 

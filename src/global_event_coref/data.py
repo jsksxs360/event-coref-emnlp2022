@@ -205,16 +205,16 @@ def get_dataLoader(args, dataset, tokenizer, mention_tokenizer=None, batch_size=
         batch_filtered_mention_events = []
         batch_filtered_event_cluster_id = []
         batch_filtered_event_subtypes = []
-        for b_idx, sentence in enumerate(batch_sentences):
+        for sentence, events, mentions, mention_poss in zip(
+            batch_sentences, batch_events, batch_mentions, batch_mention_pos
+        ):
             encoding = tokenizer(sentence, max_length=args.max_seq_length, truncation=True)
             filtered_events = []
             filtered_event_mentions = []
             filtered_mention_events = []
             filtered_event_cluster_id = []
             filtered_event_subtypes = []
-            for event, mention, mention_pos in zip(
-                batch_events[b_idx], batch_mentions[b_idx], batch_mention_pos[b_idx]
-            ):
+            for event, mention, mention_pos in zip(events, mentions, mention_poss):
                 token_start = encoding.char_to_token(event['char_start'])
                 if not token_start:
                     token_start = encoding.char_to_token(event['char_start'] + 1)
@@ -261,6 +261,90 @@ def get_dataLoader(args, dataset, tokenizer, mention_tokenizer=None, batch_size=
             'batch_event_cluster_ids': batch_filtered_event_cluster_id, 
             'batch_event_subtypes': batch_filtered_event_subtypes
         }
+    
+    def collote_fn_with_mask_dist(batch_samples):
+        batch_sentences, batch_events = [], []
+        batch_mentions, batch_mention_pos = [], []
+        batch_event_dists = []
+        for sample in batch_samples:
+            batch_sentences.append(sample['document'])
+            batch_events.append(sample['events'])
+            batch_mentions.append(sample['event_mentions'])
+            batch_mention_pos.append(sample['mention_char_pos'])
+            batch_event_dists.append(sample['word_dists'])
+        batch_inputs = tokenizer(
+            batch_sentences, 
+            max_length=args.max_seq_length, 
+            padding=True, 
+            truncation=True, 
+            return_tensors="pt"
+        )
+        batch_filtered_events = []
+        batch_filtered_mention_inputs_with_mask = []
+        batch_filtered_mention_events = []
+        batch_filtered_event_dists = []
+        batch_filtered_event_cluster_id = []
+        batch_filtered_event_subtypes = []
+        for sentence, events, mentions, mention_poss, event_dists in zip(
+            batch_sentences, batch_events, batch_mentions, batch_mention_pos, batch_event_dists
+        ):
+            encoding = tokenizer(sentence, max_length=args.max_seq_length, truncation=True)
+            filtered_events = []
+            filtered_event_mentions = []
+            filtered_mention_events = []
+            filtered_event_dists = []
+            filtered_event_cluster_id = []
+            filtered_event_subtypes = []
+            for event, mention, mention_pos, dist in zip(events, mentions, mention_poss, event_dists):
+                token_start = encoding.char_to_token(event['char_start'])
+                if not token_start:
+                    token_start = encoding.char_to_token(event['char_start'] + 1)
+                token_end = encoding.char_to_token(event['char_end'])
+                if not token_start or not token_end:
+                    continue
+                mention_char_start, mention_char_end = mention_pos
+                mention, mention_char_start, mention_char_end = cut_sent(
+                    mention, mention_char_start, mention_char_end, args.max_mention_length
+                )
+                assert mention[mention_char_start:mention_char_end+1] == event['trigger']
+                mention_encoding = mention_tokenizer(mention, max_length=args.max_mention_length, truncation=True)
+                mention_token_start = mention_encoding.char_to_token(mention_char_start)
+                if not mention_token_start:
+                    mention_token_start = mention_encoding.char_to_token(mention_char_start + 1)
+                mention_token_end = mention_encoding.char_to_token(mention_char_end)
+                assert mention_token_start and mention_token_end
+                filtered_events.append([token_start, token_end])
+                filtered_event_mentions.append(mention)
+                filtered_mention_events.append([mention_token_start, mention_token_end])
+                filtered_event_dists.append(dist)
+                filtered_event_cluster_id.append(event['cluster_id'])
+                filtered_event_subtypes.append(event['subtype'])
+            batch_filtered_events.append(filtered_events)
+            batch_filtered_mention_inputs_with_mask.append(
+                mention_tokenizer(
+                    filtered_event_mentions, 
+                    max_length=args.max_mention_length, 
+                    padding=True, 
+                    truncation=True, 
+                    return_tensors="pt"
+                )
+            )
+            batch_filtered_mention_events.append(filtered_mention_events)
+            batch_filtered_event_dists.append(np.asarray(filtered_event_dists))
+            batch_filtered_event_cluster_id.append(filtered_event_cluster_id)
+            batch_filtered_event_subtypes.append(filtered_event_subtypes)
+        for b_idx in range(len(batch_filtered_event_subtypes)):
+            for e_idx, (e_start, e_end) in enumerate(batch_filtered_mention_events[b_idx]):
+                batch_filtered_mention_inputs_with_mask[b_idx]['input_ids'][e_idx][e_start:e_end+1] = mention_tokenizer.mask_token_id
+        return {
+            'batch_inputs': batch_inputs, 
+            'batch_events': batch_filtered_events, 
+            'batch_mention_inputs_with_mask': batch_filtered_mention_inputs_with_mask, 
+            'batch_mention_events': batch_filtered_mention_events, 
+            'batch_event_dists': batch_filtered_event_dists, 
+            'batch_event_cluster_ids': batch_filtered_event_cluster_id, 
+            'batch_event_subtypes': batch_filtered_event_subtypes
+        }
 
     if collote_fn_type == 'normal':
         select_collote_fn = collote_fn
@@ -269,6 +353,9 @@ def get_dataLoader(args, dataset, tokenizer, mention_tokenizer=None, batch_size=
     elif collote_fn_type == 'with_mask':
         assert mention_tokenizer is not None
         select_collote_fn = collote_fn_with_mask
+    elif collote_fn_type == 'with_mask_dist':
+        assert mention_tokenizer is not None
+        select_collote_fn = collote_fn_with_mask_dist
     
     return DataLoader(
         dataset, 
