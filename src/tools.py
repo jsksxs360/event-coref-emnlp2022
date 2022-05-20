@@ -506,7 +506,6 @@ class SimpleTopicModel(nn.Module):
         self.inter_dim = args.topic_inter_map
         self.fc_h = nn.Linear(self.original_dim, self.inter_dim)
         self.encoder_act = nn.ReLU()
-        nn.GL
         self.fc_mu = nn.Linear(self.inter_dim, self.latent_dim)
         self.fc_var = nn.Linear(self.inter_dim, self.latent_dim)
         self.decoder_h = nn.Linear(self.latent_dim, self.inter_dim)
@@ -533,7 +532,7 @@ class SimpleTopicModel(nn.Module):
         eps = torch.randn_like(std)
         return eps * std + mean
     
-    def forward(self, batch_e1_inputs, batch_e2_inputs, batch_mask):
+    def forward(self, batch_e1_inputs, batch_e2_inputs, batch_mask=None):
         z_e1_mean, z_e1_log_var = self._encode(batch_e1_inputs)
         z_e1 = self._reparameterize(z_e1_mean, z_e1_log_var)
         batch_e1_recons = self._decode(z_e1)
@@ -541,21 +540,191 @@ class SimpleTopicModel(nn.Module):
         z_e2 = self._reparameterize(z_e2_mean, z_e2_log_var)
         batch_e2_recons = self._decode(z_e2)
         # calculate loss
-        active_loss = batch_mask.view(-1) == 1
-        active_e1_inputs = batch_e1_inputs.view(-1, self.original_dim)[active_loss]
-        active_e1_recons = batch_e1_recons.view(-1, self.original_dim)[active_loss]
-        active_z_e1_mean = z_e1_mean.view(-1, self.latent_dim)[active_loss]
-        active_z_e1_log_var = z_e1_log_var.view(-1, self.latent_dim)[active_loss]
-        
-        active_e2_inputs = batch_e2_inputs.view(-1, self.original_dim)[active_loss]
-        active_e2_recons = batch_e2_recons.view(-1, self.original_dim)[active_loss]
-        active_z_e2_mean = z_e2_mean.view(-1, self.latent_dim)[active_loss]
-        active_z_e2_log_var = z_e2_log_var.view(-1, self.latent_dim)[active_loss]
-
+        if batch_mask is not None:
+            active_loss = batch_mask.view(-1) == 1
+            active_e1_inputs = batch_e1_inputs.view(-1, self.original_dim)[active_loss]
+            active_e1_recons = batch_e1_recons.view(-1, self.original_dim)[active_loss]
+            active_z_e1_mean = z_e1_mean.view(-1, self.latent_dim)[active_loss]
+            active_z_e1_log_var = z_e1_log_var.view(-1, self.latent_dim)[active_loss]
+            
+            active_e2_inputs = batch_e2_inputs.view(-1, self.original_dim)[active_loss]
+            active_e2_recons = batch_e2_recons.view(-1, self.original_dim)[active_loss]
+            active_z_e2_mean = z_e2_mean.view(-1, self.latent_dim)[active_loss]
+            active_z_e2_log_var = z_e2_log_var.view(-1, self.latent_dim)[active_loss]
+        else: 
+            active_e1_inputs = batch_e1_inputs.view(-1, self.original_dim)
+            active_e1_recons = batch_e1_recons.view(-1, self.original_dim)
+            active_z_e1_mean = z_e1_mean.view(-1, self.latent_dim)
+            active_z_e1_log_var = z_e1_log_var.view(-1, self.latent_dim)
+            
+            active_e2_inputs = batch_e2_inputs.view(-1, self.original_dim)
+            active_e2_recons = batch_e2_recons.view(-1, self.original_dim)
+            active_z_e2_mean = z_e2_mean.view(-1, self.latent_dim)
+            active_z_e2_log_var = z_e2_log_var.view(-1, self.latent_dim)
         e1_recons_loss = F.mse_loss(active_e1_recons, active_e1_inputs)
         e1_kld_loss = torch.mean(-0.5 * torch.sum(1 + active_z_e1_log_var - active_z_e1_mean ** 2 - active_z_e1_log_var.exp(), dim = 1), dim = 0)
         e2_recons_loss = F.mse_loss(active_e2_recons, active_e2_inputs)
         e2_kld_loss = torch.mean(-0.5 * torch.sum(1 + active_z_e2_log_var - active_z_e2_mean ** 2 - active_z_e2_log_var.exp(), dim = 1), dim = 0)
         loss = 0.5 * (e1_recons_loss + e1_kld_loss) + 0.5 * (e2_recons_loss + e2_kld_loss)
+
+        return loss, z_e1, z_e2
+
+class SimpleTopicModelwithBN(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.batch_size = args.batch_size
+        self.original_dim = args.dist_dim
+        self.latent_dim = args.topic_dim
+        self.inter_dim = args.topic_inter_map
+        self.fc_h = nn.Linear(self.original_dim, self.inter_dim)
+        self.encoder_act = nn.ReLU()
+        self.fc_mu = nn.Linear(self.inter_dim, self.latent_dim)
+        self.bn_mu = nn.BatchNorm1d(self.latent_dim, eps=1e-8)
+        self.fc_var = nn.Linear(self.inter_dim, self.latent_dim)
+        self.decoder_h = nn.Linear(self.latent_dim, self.inter_dim)
+        self.decoder_act_1 = nn.ReLU()
+        self.decoder_mean = nn.Linear(self.inter_dim, self.original_dim)
+        self.decoder_act_2 = nn.Sigmoid()
+
+    def _encode(self, inputs):
+        result = self.fc_h(inputs)
+        result = self.encoder_act(result)
+        z_mean = self.fc_mu(result)
+        z_mean = z_mean.view(-1, self.latent_dim)
+        if z_mean.size()[0] > 1:
+            z_mean = self.bn_mu(z_mean)
+        z_mean = z_mean.view(self.batch_size, -1, self.latent_dim)
+        z_log_var = self.fc_var(result)
+        return z_mean, z_log_var
+    
+    def _decode(self, z):
+        result = self.decoder_h(z)
+        result = self.decoder_act_1(result)
+        result = self.decoder_mean(result)
+        result = self.decoder_act_2(result)
+        return result
+
+    def _reparameterize(self, mean, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return eps * std + mean
+    
+    def forward(self, batch_e1_inputs, batch_e2_inputs, batch_mask=None):
+        z_e1_mean, z_e1_log_var = self._encode(batch_e1_inputs)
+        z_e1 = self._reparameterize(z_e1_mean, z_e1_log_var)
+        batch_e1_recons = self._decode(z_e1)
+        z_e2_mean, z_e2_log_var = self._encode(batch_e2_inputs)
+        z_e2 = self._reparameterize(z_e2_mean, z_e2_log_var)
+        batch_e2_recons = self._decode(z_e2)
+        # calculate loss
+        if batch_mask is not None:
+            active_loss = batch_mask.view(-1) == 1
+            active_e1_inputs = batch_e1_inputs.view(-1, self.original_dim)[active_loss]
+            active_e1_recons = batch_e1_recons.view(-1, self.original_dim)[active_loss]
+            active_z_e1_mean = z_e1_mean.view(-1, self.latent_dim)[active_loss]
+            active_z_e1_log_var = z_e1_log_var.view(-1, self.latent_dim)[active_loss]
+            
+            active_e2_inputs = batch_e2_inputs.view(-1, self.original_dim)[active_loss]
+            active_e2_recons = batch_e2_recons.view(-1, self.original_dim)[active_loss]
+            active_z_e2_mean = z_e2_mean.view(-1, self.latent_dim)[active_loss]
+            active_z_e2_log_var = z_e2_log_var.view(-1, self.latent_dim)[active_loss]
+        else:
+            active_e1_inputs = batch_e1_inputs.view(-1, self.original_dim)
+            active_e1_recons = batch_e1_recons.view(-1, self.original_dim)
+            active_z_e1_mean = z_e1_mean.view(-1, self.latent_dim)
+            active_z_e1_log_var = z_e1_log_var.view(-1, self.latent_dim)
+            
+            active_e2_inputs = batch_e2_inputs.view(-1, self.original_dim)
+            active_e2_recons = batch_e2_recons.view(-1, self.original_dim)
+            active_z_e2_mean = z_e2_mean.view(-1, self.latent_dim)
+            active_z_e2_log_var = z_e2_log_var.view(-1, self.latent_dim)
+        e1_recons_loss = F.mse_loss(active_e1_recons, active_e1_inputs)
+        e1_kld_loss = torch.mean(-0.5 * torch.sum(1 + active_z_e1_log_var - active_z_e1_mean ** 2 - active_z_e1_log_var.exp(), dim = 1), dim = 0)
+        e2_recons_loss = F.mse_loss(active_e2_recons, active_e2_inputs)
+        e2_kld_loss = torch.mean(-0.5 * torch.sum(1 + active_z_e2_log_var - active_z_e2_mean ** 2 - active_z_e2_log_var.exp(), dim = 1), dim = 0)
+        loss = 0.5 * (e1_recons_loss + e1_kld_loss) + 0.5 * (e2_recons_loss + e2_kld_loss)
+
+        return loss, z_e1, z_e2
+
+class SimpleTopicVMFModel(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.use_device = args.device
+        self.batch_size = args.batch_size
+        self.original_dim = args.dist_dim
+        self.latent_dim = args.topic_dim
+        self.inter_dim = args.topic_inter_map
+        self.fc_h = nn.Linear(self.original_dim, self.inter_dim)
+        self.encoder_act = nn.ReLU()
+        self.fc_mu = nn.Linear(self.inter_dim, self.latent_dim)
+        self.decoder_h = nn.Linear(self.latent_dim, self.inter_dim)
+        self.decoder_act_1 = nn.ReLU()
+        self.decoder_mean = nn.Linear(self.inter_dim, self.original_dim)
+        self.decoder_act_2 = nn.Sigmoid()
+        self.W = self._init_w(self.latent_dim)
+
+    def _init_w(self, dims, kappa=20):
+        epsilon = 1e-7
+        x = np.arange(-1 + epsilon, 1, epsilon)
+        y = kappa * x + np.log(1 - x**2) * (dims - 3) / 2
+        y = np.cumsum(np.exp(y - y.max()))
+        y = y / y[-1]
+        W = torch.tensor(
+            (np.interp(np.random.random(10**6), y, x)), 
+            device=self.use_device, dtype=torch.float32
+        )
+        return W
+
+    def _encode(self, inputs):
+        result = self.fc_h(inputs)
+        result = self.encoder_act(result)
+        mu = self.fc_mu(result)
+        return F.normalize(mu, p=2, dim=-1)
+    
+    def _decode(self, z):
+        result = self.decoder_h(z)
+        result = self.decoder_act_1(result)
+        result = self.decoder_mean(result)
+        result = self.decoder_act_2(result)
+        return result
+
+    def _sampling(self, mu):
+        batch_size, dims = mu.size()
+        # real-time sampling w
+        idx = torch.randint(0, 10**6, size=(batch_size,), device=self.use_device)
+        w = torch.gather(self.W, 0, idx)
+        w = torch.repeat_interleave(w.unsqueeze(-1), repeats=dims, dim=-1)
+        # real-time sampling z
+        eps = torch.randn_like(mu)
+        nu = eps - torch.sum(eps * mu, dim=1, keepdim=True) * mu
+        nu = F.normalize(nu, p=2, dim=-1)
+        return w * mu + (1 - w**2)**0.5 * nu
+    
+    def forward(self, batch_e1_inputs, batch_e2_inputs, batch_mask=None):
+        z_e1_mean = self._encode(batch_e1_inputs)
+        z_e1_mean = z_e1_mean.view(-1, self.latent_dim)
+        z_e1 = self._sampling(z_e1_mean)
+        z_e1 = z_e1.view(self.batch_size, -1, self.latent_dim)
+        batch_e1_recons = self._decode(z_e1)
+        z_e2_mean = self._encode(batch_e2_inputs)
+        z_e2_mean = z_e2_mean.view(-1, self.latent_dim)
+        z_e2 = self._sampling(z_e2_mean)
+        z_e2 = z_e2.view(self.batch_size, -1, self.latent_dim)
+        batch_e2_recons = self._decode(z_e2)
+        # calculate loss
+        if batch_mask is not None:
+            active_loss = batch_mask.view(-1) == 1
+            active_e1_inputs = batch_e1_inputs.view(-1, self.original_dim)[active_loss]
+            active_e1_recons = batch_e1_recons.view(-1, self.original_dim)[active_loss]
+            active_e2_inputs = batch_e2_inputs.view(-1, self.original_dim)[active_loss]
+            active_e2_recons = batch_e2_recons.view(-1, self.original_dim)[active_loss]
+        else:
+            active_e1_inputs = batch_e1_inputs.view(-1, self.original_dim)
+            active_e1_recons = batch_e1_recons.view(-1, self.original_dim)
+            active_e2_inputs = batch_e2_inputs.view(-1, self.original_dim)
+            active_e2_recons = batch_e2_recons.view(-1, self.original_dim)
+        e1_recons_loss = F.mse_loss(active_e1_recons, active_e1_inputs)
+        e2_recons_loss = F.mse_loss(active_e2_recons, active_e2_inputs)
+        loss = 0.5 * e1_recons_loss + 0.5 * e2_recons_loss
 
         return loss, z_e1, z_e2
