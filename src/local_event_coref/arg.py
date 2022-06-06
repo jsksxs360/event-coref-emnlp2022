@@ -12,16 +12,15 @@ def parse_args():
     parser.add_argument("--test_file", default=None, type=str, required=True, help="The input testing file.")
     
     parser.add_argument("--model_type",
-        default="longformer", type=str, required=True
+        default="bert", type=str, required=True
     )
     parser.add_argument("--model_checkpoint",
-        default="allenai/longformer-base-4096", type=str, required=True,
+        default="bert-large-cased/", type=str, required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models",
     )
-    parser.add_argument("--max_seq_length", default=4096, type=int, required=True)
+    parser.add_argument("--max_seq_length", default=512, type=int, required=True)
     parser.add_argument("--matching_style", default="multi", type=str, required=True, 
-        help="how to match two event representations", 
-        choices=['base', 'multi', 'dist', 'multi_dist']
+        help="how to match two event representations"
     )
     
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
@@ -32,6 +31,11 @@ def parse_args():
     parser.add_argument("--cache_dir", default=None, type=str,
         help="Where do you want to store the pre-trained models downloaded from s3"
     )
+    parser.add_argument("--topic_model", default='stm', type=str, 
+        choices=['stm', 'stm_bn', 'vmf']
+    )
+    parser.add_argument("--topic_dim", default=32, type=int)
+    parser.add_argument("--topic_inter_map", default=64, type=int)
     parser.add_argument("--softmax_loss", default='ce', type=str,
         help="The loss function for softmax model.", 
         choices=['lsr', 'focal', 'ce']

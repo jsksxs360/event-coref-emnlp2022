@@ -11,9 +11,8 @@ import sys
 sys.path.append('../../')
 from src.tools import seed_everything, NpEncoder
 from src.local_event_coref.arg import parse_args
-from src.local_event_coref.data import KBPCorefPair, get_dataLoader, NO_CUTE, cut_sent
-from src.local_event_coref.modeling import LongformerForPairwiseEC, BertForPairwiseEC
-from src.local_event_coref.modeling import RobertaForPairwiseEC
+from src.local_event_coref.data import KBPCorefPair, get_dataLoader
+from src.local_event_coref.modeling import BertForPairwiseEC, RobertaForPairwiseEC
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%Y/%m/%d %H:%M:%S',
@@ -24,9 +23,19 @@ Sentence = namedtuple("Sentence", ["start", "text"])
 MODEL_CLASSES = {
     'bert': BertForPairwiseEC,
     'spanbert': BertForPairwiseEC, 
-    'roberta': RobertaForPairwiseEC, 
-    'longformer': LongformerForPairwiseEC
+    'roberta': RobertaForPairwiseEC
 }
+
+def to_device(args, batch_data):
+    new_batch_data = {}
+    for k, v in batch_data.items():
+        if k == 'batch_inputs':
+            new_batch_data[k] = {
+                k_: v_.to(args.device) for k_, v_ in v.items()
+            }
+        else:
+            new_batch_data[k] = torch.tensor(v).to(args.device)
+    return new_batch_data
 
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))
@@ -35,7 +44,7 @@ def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_lo
     
     model.train()
     for step, batch_data in enumerate(dataloader, start=1):
-        batch_data = batch_data.to(args.device)
+        batch_data = to_device(args, batch_data)
         outputs = model(**batch_data)
         loss = outputs[0]
 
@@ -54,7 +63,7 @@ def test_loop(args, dataloader, model):
     model.eval()
     with torch.no_grad():
         for batch_data in tqdm(dataloader):
-            batch_data = batch_data.to(args.device)
+            batch_data = to_device(args, batch_data)
             outputs = model(**batch_data)
             logits = outputs[1]
 
@@ -98,7 +107,6 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
 
     total_loss = 0.
     best_f1 = 0.
-    save_weights = []
     for epoch in range(args.num_train_epochs):
         print(f"Epoch {epoch+1}/{args.num_train_epochs}\n-------------------------------")
         total_loss = train_loop(args, train_dataloader, model, optimizer, lr_scheduler, epoch, total_loss)
@@ -110,11 +118,9 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
-            save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")
-    return save_weights
 
 def test(args, test_dataset, model, tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(args, test_dataset, tokenizer, batch_size=1, shuffle=False)
@@ -126,17 +132,19 @@ def test(args, test_dataset, model, tokenizer, save_weights:list):
         with open(os.path.join(args.output_dir, 'test_metrics.txt'), 'at') as f:
             f.write(f'{save_weight}\n{json.dumps(metrics, cls=NpEncoder)}\n\n')
 
-def predict(args, 
-    sent_1, sent_2, 
-    e1_char_start, e1_char_end, 
-    e2_char_start, e2_char_end, 
-    model, tokenizer
-    ):
+def predict(args, sent_1, sent_2, e1_char_start, e1_char_end, e2_char_start, e2_char_end, model, tokenizer):
     
-    if args.model_type not in NO_CUTE:
-        max_length = (args.max_seq_length - 50) // 4
-        sent_1, e1_char_start, e1_char_end = cut_sent(sent_1, e1_char_start, e1_char_end, max_length)
-        sent_2, e2_char_start, e2_char_end = cut_sent(sent_2, e2_char_start, e2_char_end, max_length)
+    def _cut_sent(sent, e_char_start, e_char_end, max_length):
+        before = ' '.join([c for c in sent[:e_char_start].split(' ') if c != ''][-max_length:]).strip()
+        trigger = sent[e_char_start:e_char_end+1]
+        after = ' '.join([c for c in sent[e_char_end+1:].split(' ') if c != ''][:max_length]).strip()
+        new_sent, new_char_start, new_char_end = before + ' ' + trigger + ' ' + after, len(before) + 1, len(before) + len(trigger)
+        assert new_sent[new_char_start:new_char_end+1] == trigger
+        return new_sent, new_char_start, new_char_end
+    
+    max_mention_length = (args.max_seq_length - 50) // 4
+    sent_1, e1_char_start, e1_char_end = _cut_sent(sent_1, e1_char_start, e1_char_end, max_mention_length)
+    sent_2, e2_char_start, e2_char_end = _cut_sent(sent_2, e2_char_start, e2_char_end, max_mention_length)
     inputs = tokenizer(
         sent_1, 
         sent_2, 
@@ -153,9 +161,12 @@ def predict(args,
         e2_token_start = inputs.char_to_token(e2_char_start + 1, sequence_index=1)
     e2_token_end = inputs.char_to_token(e2_char_end, sequence_index=1)
     assert e1_token_start and e1_token_end and e2_token_start and e2_token_end
-    inputs['batch_e1_idx'] = torch.tensor([[[e1_token_start, e1_token_end]]])
-    inputs['batch_e2_idx'] = torch.tensor([[[e2_token_start, e2_token_end]]])
-    inputs = inputs.to(args.device)
+    inputs = {
+        'batch_inputs': inputs, 
+        'batch_e1_idx': [[[e1_token_start, e1_token_end]]], 
+        'batch_e2_idx': [[[e2_token_start, e2_token_end]]]
+    }
+    inputs = to_device(args, inputs)
     with torch.no_grad():
         outputs = model(**inputs)
         logits = outputs[1]
@@ -196,11 +207,11 @@ if __name__ == '__main__':
     # Training
     save_weights = []
     if args.do_train:
-        logger.info(f'Training/evaluation parameters: {args}')
         train_dataset = KBPCorefPair(args.train_file)
         dev_dataset = KBPCorefPair(args.dev_file)
         save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
     # Testing
+    save_weights = [file for file in os.listdir(args.output_dir) if file.endswith('.bin')]
     if args.do_test:
         test_dataset = KBPCorefPair(args.test_file)
         test(args, test_dataset, model, tokenizer, save_weights)
@@ -212,55 +223,55 @@ if __name__ == '__main__':
                 doc_id, start, text = line.strip().split('\t')
                 kbp_sent_dic[doc_id].append(Sentence(int(start), text))
 
-        best_save_weight = 'XXX.bin'
-        pred_event_file = 'XXX_pred_events.json'
-        
-        logger.info(f'loading weights from {best_save_weight}...')
-        model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
-        logger.info(f'predicting coref labels of {best_save_weight}...')
-        
-        results = []
-        model.eval()
-        pred_event_filepath = os.path.join(args.output_dir, pred_event_file)
-        with open(pred_event_filepath, 'rt' , encoding='utf-8') as f_in:
-            for line in tqdm(f_in.readlines()):
-                sample = json.loads(line.strip())
-                events = [
-                    (event['start'], event['start'] + len(event['trigger']) - 1, event['trigger'])
-                    for event in sample['pred_label']
-                ]
-                sents = kbp_sent_dic[sample['doc_id']]
-                new_events = []
-                for e_start, e_end, e_trigger in events:
-                    e_sent, e_new_start, e_new_end = get_event_sent(e_start, e_end, sents)
-                    assert e_sent is not None and e_sent[e_new_start:e_new_end+1] == e_trigger
-                    new_events.append((e_new_start, e_new_end, e_sent))
-                predictions, probabilities = [], []
-                for i in range(len(new_events) - 1):
-                    for j in range(i + 1, len(new_events)):
-                        e1_char_start, e1_char_end, sent_1 = new_events[i]
-                        e2_char_start, e2_char_end, sent_2 = new_events[j]
-                        pred, prob = predict(args, 
-                            sent_1, sent_2, 
-                            e1_char_start, e1_char_end, 
-                            e2_char_start, e2_char_end, 
-                            model, tokenizer
-                        )
-                        predictions.append(pred)
-                        probabilities.append(prob)
-                results.append({
-                    "doc_id": sample['doc_id'], 
-                    "document": sample['document'], 
-                    "events": [
-                        {
-                            'start': char_start, 
-                            'end': char_end, 
-                            'trigger': trigger
-                        } for char_start, char_end, trigger in events
-                    ], 
-                    "pred_label": predictions, 
-                    "pred_prob": probabilities
-                })
-        with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
-            for exapmle_result in results:
-                f.write(json.dumps(exapmle_result) + '\n')
+        pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
+
+        for best_save_weight in save_weights:
+            logger.info(f'loading weights from {best_save_weight}...')
+            model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
+            logger.info(f'predicting coref labels of {best_save_weight}...')
+            
+            results = []
+            model.eval()
+            pred_event_filepath = os.path.join(args.output_dir, pred_event_file)
+            with open(pred_event_filepath, 'rt' , encoding='utf-8') as f_in:
+                for line in tqdm(f_in.readlines()):
+                    sample = json.loads(line.strip())
+                    events = [
+                        (event['start'], event['start'] + len(event['trigger']) - 1, event['trigger'])
+                        for event in sample['pred_label']
+                    ]
+                    sents = kbp_sent_dic[sample['doc_id']]
+                    new_events = []
+                    for e_start, e_end, e_trigger in events:
+                        e_sent, e_new_start, e_new_end = get_event_sent(e_start, e_end, sents)
+                        assert e_sent is not None and e_sent[e_new_start:e_new_end+1] == e_trigger
+                        new_events.append((e_new_start, e_new_end, e_sent))
+                    predictions, probabilities = [], []
+                    for i in range(len(new_events) - 1):
+                        for j in range(i + 1, len(new_events)):
+                            e1_char_start, e1_char_end, sent_1 = new_events[i]
+                            e2_char_start, e2_char_end, sent_2 = new_events[j]
+                            pred, prob = predict(args, 
+                                sent_1, sent_2, 
+                                e1_char_start, e1_char_end, 
+                                e2_char_start, e2_char_end, 
+                                model, tokenizer
+                            )
+                            predictions.append(pred)
+                            probabilities.append(prob)
+                    results.append({
+                        "doc_id": sample['doc_id'], 
+                        "document": sample['document'], 
+                        "events": [
+                            {
+                                'start': char_start, 
+                                'end': char_end, 
+                                'trigger': trigger
+                            } for char_start, char_end, trigger in events
+                        ], 
+                        "pred_label": predictions, 
+                        "pred_prob": probabilities
+                    })
+            with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
+                for exapmle_result in results:
+                    f.write(json.dumps(exapmle_result) + '\n')
