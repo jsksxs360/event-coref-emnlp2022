@@ -38,8 +38,10 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
         if 'cosine' not in self.matching_style:
             if self.matching_style == 'base':
                 multiples = 2
-            elif self.matching_style == 'multi':
+            elif self.matching_style == 'multi' or self.matching_style == 'dist':
                 multiples = 3
+            elif self.matching_style == 'multi_dist':
+                multiples = 4
             self.coref_classifier = nn.Linear(multiples * self.hidden_size, self.num_labels)
         else:
             self.cosine_space_dim, self.cosine_slices, self.tensor_factor = COSINE_SPACE_DIM, COSINE_SLICES, COSINE_FACTOR
@@ -100,9 +102,16 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
         elif self.matching_style == 'multi':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'cosine':
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_multi_cosine], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'multi_cosine':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
@@ -212,8 +221,10 @@ class LongformerSoftmaxForECwithTopic(LongformerPreTrainedModel):
         if 'cosine' not in self.matching_style:
             if self.matching_style == 'base':
                 multiples = 2
-            elif self.matching_style == 'multi':
+            elif self.matching_style == 'multi' or self.matching_style == 'dist':
                 multiples = 3
+            elif self.matching_style == 'multi_dist':
+                multiples = 4
             self.coref_classifier = nn.Linear(multiples * self.hidden_size, self.num_labels)
         else:
             self.cosine_space_dim, self.cosine_slices, self.tensor_factor = COSINE_SPACE_DIM, COSINE_SLICES, COSINE_FACTOR
@@ -224,6 +235,8 @@ class LongformerSoftmaxForECwithTopic(LongformerPreTrainedModel):
                 self.coref_classifier = nn.Linear(2 * self.hidden_size + self.cosine_slices, self.num_labels)
             elif self.matching_style == 'multi_cosine':
                 self.coref_classifier = nn.Linear(3 * self.hidden_size + self.cosine_slices, self.num_labels)
+            elif self.matching_style == 'multi_dist_cosine':
+                self.coref_classifier = nn.Linear(4 * self.hidden_size + self.cosine_slices, self.num_labels)
         self.post_init()
     
     def _multi_cosine(self, batch_event_1_reps, batch_event_2_reps):
@@ -272,13 +285,25 @@ class LongformerSoftmaxForECwithTopic(LongformerPreTrainedModel):
         elif self.matching_style == 'multi':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'cosine':
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_multi_cosine], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'multi_cosine':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_multi_cosine], dim=-1)
+        elif self.matching_style == 'multi_dist_cosine':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist, batch_multi_cosine], dim=-1)
         return batch_seq_reps
     
     def forward(self, batch_inputs, batch_events, batch_event_dists, batch_event_cluster_ids=None):
@@ -400,9 +425,9 @@ class LongformerSoftmaxForECwithTopic(LongformerPreTrainedModel):
                 active_event_1_reps = batch_event_1_reps.view(-1, self.hidden_size)[active_loss]
                 active_event_2_reps = batch_event_2_reps.view(-1, self.hidden_size)[active_loss]
                 loss_contrasive = self._cal_circle_loss(active_event_1_reps, active_event_2_reps, active_labels)
-                loss = loss_coref + loss_topic + 0.2 * loss_contrasive
+                loss = torch.log(1 + loss_coref) + torch.log(1 + loss_topic) + 0.2 * loss_contrasive
             else:
-                loss = loss_coref + loss_topic
+                loss = torch.log(1 + loss_coref) + torch.log(1 + loss_topic)
         return loss, logits, batch_mask, batch_labels
 
 class LongformerSoftmaxForECwithMask(LongformerPreTrainedModel):
@@ -433,8 +458,10 @@ class LongformerSoftmaxForECwithMask(LongformerPreTrainedModel):
         if 'cosine' not in self.matching_style:
             if self.matching_style == 'base':
                 multiples = 2
-            elif self.matching_style in ['multi', 'dist']:
+            elif self.matching_style == 'multi':
                 multiples = 3
+            elif self.matching_style == 'multi_dist':
+                multiples = 4
             self.coref_classifier = nn.Linear(multiples * self.hidden_size, self.num_labels)
         else:
             self.cosine_space_dim, self.cosine_slices, self.tensor_factor = COSINE_SPACE_DIM, COSINE_SLICES, COSINE_FACTOR
@@ -445,6 +472,8 @@ class LongformerSoftmaxForECwithMask(LongformerPreTrainedModel):
                 self.coref_classifier = nn.Linear(2 * self.hidden_size + self.cosine_slices, self.num_labels)
             elif self.matching_style == 'multi_cosine':
                 self.coref_classifier = nn.Linear(3 * self.hidden_size + self.cosine_slices, self.num_labels)
+            elif self.matching_style == 'multi_dist_cosine':
+                self.coref_classifier = nn.Linear(4 * self.hidden_size + self.cosine_slices, self.num_labels)
         self.post_init()
     
     def _multi_cosine(self, batch_event_1_reps, batch_event_2_reps):
@@ -493,13 +522,25 @@ class LongformerSoftmaxForECwithMask(LongformerPreTrainedModel):
         elif self.matching_style == 'multi':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'cosine':
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_multi_cosine], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'multi_cosine':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_multi_cosine], dim=-1)
+        elif self.matching_style == 'multi_dist_cosine':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist, batch_multi_cosine], dim=-1)
         return batch_seq_reps
 
     def forward(self, 
@@ -657,9 +698,9 @@ class LongformerSoftmaxForECwithMask(LongformerPreTrainedModel):
                 active_event_1_reps = batch_event_1_reps.view(-1, self.hidden_size)[active_loss]
                 active_event_2_reps = batch_event_2_reps.view(-1, self.hidden_size)[active_loss]
                 loss_contrasive = self._cal_circle_loss(active_event_1_reps, active_event_2_reps, active_labels)
-                loss = loss_coref + loss_subtype + 0.2 * loss_contrasive
+                loss = torch.log(1 + loss_coref) + torch.log(1 + loss_subtype) + 0.2 * loss_contrasive
             else:
-                loss = loss_coref + loss_subtype
+                loss = torch.log(1 + loss_coref) + torch.log(1 + loss_subtype)
         return loss, logits, batch_mask, batch_labels
 
 class LongformerSoftmaxForECwithMaskTopic(LongformerPreTrainedModel):
@@ -692,8 +733,10 @@ class LongformerSoftmaxForECwithMaskTopic(LongformerPreTrainedModel):
         if 'cosine' not in self.matching_style:
             if self.matching_style == 'base':
                 multiples = 2
-            elif self.matching_style in ['multi', 'dist']:
+            elif self.matching_style == 'multi' or self.matching_style == 'dist':
                 multiples = 3
+            elif self.matching_style == 'multi_dist':
+                multiples = 4
             self.coref_classifier = nn.Linear(multiples * self.hidden_size, self.num_labels)
         else:
             self.cosine_space_dim, self.cosine_slices, self.tensor_factor = COSINE_SPACE_DIM, COSINE_SLICES, COSINE_FACTOR
@@ -704,6 +747,8 @@ class LongformerSoftmaxForECwithMaskTopic(LongformerPreTrainedModel):
                 self.coref_classifier = nn.Linear(2 * self.hidden_size + self.cosine_slices, self.num_labels)
             elif self.matching_style == 'multi_cosine':
                 self.coref_classifier = nn.Linear(3 * self.hidden_size + self.cosine_slices, self.num_labels)
+            elif self.matching_style == 'multi_dist_cosine':
+                self.coref_classifier = nn.Linear(4 * self.hidden_size + self.cosine_slices, self.num_labels)
         self.post_init()
     
     def _multi_cosine(self, batch_event_1_reps, batch_event_2_reps):
@@ -752,13 +797,25 @@ class LongformerSoftmaxForECwithMaskTopic(LongformerPreTrainedModel):
         elif self.matching_style == 'multi':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi], dim=-1)
+        elif self.matching_style == 'dist':
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'cosine':
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_multi_cosine], dim=-1)
+        elif self.matching_style == 'multi_dist':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist], dim=-1)
         elif self.matching_style == 'multi_cosine':
             batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
             batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
             batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_multi_cosine], dim=-1)
+        elif self.matching_style == 'multi_dist_cosine':
+            batch_e1_e2_multi = batch_event_1_reps * batch_event_2_reps
+            batch_e1_e2_dist = torch.abs(batch_event_1_reps - batch_event_2_reps)
+            batch_multi_cosine = self._multi_cosine(batch_event_1_reps, batch_event_2_reps)
+            batch_seq_reps = torch.cat([batch_event_1_reps, batch_event_2_reps, batch_e1_e2_multi, batch_e1_e2_dist, batch_multi_cosine], dim=-1)
         return batch_seq_reps
 
     def forward(self, 
@@ -952,7 +1009,7 @@ class LongformerSoftmaxForECwithMaskTopic(LongformerPreTrainedModel):
                 active_event_1_reps = batch_event_1_reps.view(-1, self.hidden_size)[active_loss]
                 active_event_2_reps = batch_event_2_reps.view(-1, self.hidden_size)[active_loss]
                 loss_contrasive = self._cal_circle_loss(active_event_1_reps, active_event_2_reps, active_labels)
-                loss = loss_coref + loss_subtype + loss_topic + 0.2 * loss_contrasive
+                loss = torch.log(1 + loss_coref) + torch.log(1 + loss_subtype) + torch.log(1 + loss_topic) + 0.2 * loss_contrasive
             else:
-                loss = loss_coref + loss_subtype + loss_topic
+                loss = torch.log(1 + loss_coref) + torch.log(1 + loss_subtype) + torch.log(1 + loss_topic)
         return loss, logits, batch_mask, batch_labels

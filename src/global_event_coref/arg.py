@@ -35,8 +35,8 @@ def parse_args():
     parser.add_argument("--topic_model", default='stm', type=str, 
         choices=['stm', 'stm_bn', 'vmf']
     )
-    parser.add_argument("--topic_dim", default=256, type=int)
-    parser.add_argument("--topic_inter_map", default=512, type=int)
+    parser.add_argument("--topic_dim", default=32, type=int)
+    parser.add_argument("--topic_inter_map", default=64, type=int)
     parser.add_argument("--mention_encoder_type", default="bert", type=str)
     parser.add_argument("--mention_encoder_checkpoint",
         default="bert-large-cased", type=str, 

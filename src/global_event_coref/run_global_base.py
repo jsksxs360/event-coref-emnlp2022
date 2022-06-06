@@ -120,7 +120,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
             save_weights.append(save_weight)
-        elif 100*dev_p > 70 and 100*dev_r > 70:
+        elif 100 * dev_p > 69 and 100 * dev_r > 69:
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
@@ -220,7 +220,8 @@ if __name__ == '__main__':
     # Predicting
     if args.do_predict:
         pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
-        
+        # pred_event_file = 'test_filtered.json'
+
         for best_save_weight in save_weights:
             logger.info(f'loading weights from {best_save_weight}...')
             model.load_state_dict(torch.load(os.path.join(args.output_dir, best_save_weight)))
@@ -230,9 +231,10 @@ if __name__ == '__main__':
             with open(os.path.join(args.output_dir, pred_event_file), 'rt' , encoding='utf-8') as f_in:
                 for line in tqdm(f_in.readlines()):
                     sample = json.loads(line.strip())
+                    events_from_file = sample['events'] if pred_event_file == 'test_filtered.json' else sample['pred_label']
                     events = [
                         [event['start'], event['start'] + len(event['trigger']) - 1] 
-                        for event in sample['pred_label']
+                        for event in events_from_file
                     ]
                     new_events, predictions, probabilities = predict(args, sample['document'], events, model, tokenizer)
                     results.append({
@@ -248,7 +250,8 @@ if __name__ == '__main__':
                         "pred_label": predictions, 
                         "pred_prob": probabilities
                     })
-            with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
+            save_name = '_gold_test_pred_corefs.json' if pred_event_file == 'test_filtered.json' else '_test_pred_corefs.json'
+            with open(os.path.join(args.output_dir, best_save_weight + save_name), 'wt', encoding='utf-8') as f:
                 for exapmle_result in results:
                     f.write(json.dumps(exapmle_result) + '\n')
     # Analysis

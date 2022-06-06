@@ -244,6 +244,7 @@ if __name__ == '__main__':
                 kbp_sent_dic[doc_id].append(Sentence(int(start), text))
 
         pred_event_file = 'epoch_3_dev_f1_57.9994_weights.bin_test_pred_events.json'
+        # pred_event_file = 'test_filtered.json'
 
         for best_save_weight in save_weights:
             logger.info(f'loading weights from {best_save_weight}...')
@@ -255,13 +256,14 @@ if __name__ == '__main__':
             with open(os.path.join(args.output_dir, pred_event_file), 'rt' , encoding='utf-8') as f_in:
                 for line in tqdm(f_in.readlines()):
                     sample = json.loads(line.strip())
+                    events_from_file = sample['events'] if pred_event_file == 'test_filtered.json' else sample['pred_label']
                     events = [
                         [event['start'], event['start'] + len(event['trigger']) - 1] 
-                        for event in sample['pred_label']
+                        for event in events_from_file
                     ]
                     sents = kbp_sent_dic[sample['doc_id']]
                     event_dists = []
-                    for event in sample['pred_label']:
+                    for event in events_from_file:
                         e_dist = get_event_dist(event['start'], event['start'] + len(event['trigger']) - 1, sents)
                         assert e_dist is not None
                         event_dists.append(e_dist)
@@ -281,6 +283,7 @@ if __name__ == '__main__':
                         "pred_label": predictions, 
                         "pred_prob": probabilities
                     })
-            with open(os.path.join(args.output_dir, best_save_weight + '_test_pred_corefs.json'), 'wt', encoding='utf-8') as f:
+            save_name = '_gold_test_pred_corefs.json' if pred_event_file == 'test_filtered.json' else '_test_pred_corefs.json'
+            with open(os.path.join(args.output_dir, best_save_weight + save_name), 'wt', encoding='utf-8') as f:
                 for exapmle_result in results:
                     f.write(json.dumps(exapmle_result) + '\n')

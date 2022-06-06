@@ -19,7 +19,8 @@ def clustering_greedy(events, pred_labels:list):
                     return i, j
         return -1, -1
 
-    assert len(pred_labels) == len(events) * (len(events) - 1) / 2
+    if len(events) > 1:
+        assert len(pred_labels) == len(events) * (len(events) - 1) / 2
     event_pairs = [
         str(events[i]['start']) + '-' + str(events[j]['start'])
         for i in range(len(events) - 1) for j in range(i + 1, len(events))
