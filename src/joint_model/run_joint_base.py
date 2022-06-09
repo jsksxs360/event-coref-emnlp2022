@@ -149,7 +149,7 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
                 save_weight = f'epoch_{epoch+1}_dev_tdf1_{(100*td_dev_f1):0.4f}_ecf1_{(100*ec_dev_f1):0.4f}_weights.bin'
                 torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
                 has_saved = True
-        elif 100*ec_dev_p > 70 and 100*ec_dev_r > 70:
+        elif 100*ec_dev_p > 69 and 100*ec_dev_r > 69:
             if not has_saved:
                 logger.info(f'saving new weights to {args.output_dir}...\n')
                 save_weight = f'epoch_{epoch+1}_dev_tdf1_{(100*td_dev_f1):0.4f}_ecf1_{(100*ec_dev_f1):0.4f}_weights.bin'
@@ -331,7 +331,7 @@ if __name__ == '__main__':
             # predict coreference
             logger.info(f'predicting coref labels of {best_save_weight}...')
             ec_results = []
-            for sample in td_results:
+            for sample in tqdm(td_results):
                 events = [
                     [event['start'], event['start'] + len(event['trigger']) - 1] 
                     for event in sample['pred_label']

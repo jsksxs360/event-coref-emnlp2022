@@ -5,11 +5,16 @@ from transformers import LongformerPreTrainedModel, LongformerModel
 from transformers import BertModel, RobertaModel
 from allennlp.modules.span_extractors import SelfAttentiveSpanExtractor
 from ..tools import LabelSmoothingCrossEntropy, FocalLoss
-from ..tools import SimpleTopicModelwithBN as SimpleTopicModel
+from ..tools import SimpleTopicModel, SimpleTopicModelwithBN, SimpleTopicVMFModel
 
 MENTION_ENCODER = {
     'bert': BertModel, 
     'roberta': RobertaModel
+}
+TOPIC_MODEL = {
+    'stm': SimpleTopicModel, 
+    'stm_bn': SimpleTopicModelwithBN, 
+    'vmf': SimpleTopicVMFModel
 }
 COSINE_SPACE_DIM = 64
 COSINE_SLICES = 128
@@ -194,7 +199,7 @@ class LongformerSoftmaxForEC(LongformerPreTrainedModel):
                 active_event_1_reps = batch_event_1_reps.view(-1, self.hidden_size)[active_coref_loss]
                 active_event_2_reps = batch_event_2_reps.view(-1, self.hidden_size)[active_coref_loss]
                 loss_contrasive = self._cal_circle_loss(active_event_1_reps, active_event_2_reps, active_coref_labels)
-                loss = loss_td + loss_coref + 0.2 * loss_contrasive
+                loss = torch.log(1 + loss_td) + torch.log(1 + loss_coref) + 0.2 * loss_contrasive
             else:
-                loss = loss_td + loss_coref
+                loss = torch.log(1 + loss_td) + torch.log(1 + loss_coref)
         return loss, td_logits, coref_logits, attention_mask, batch_td_labels, batch_mask, batch_ec_labels
