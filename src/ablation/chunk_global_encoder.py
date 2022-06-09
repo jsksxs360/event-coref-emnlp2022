@@ -30,18 +30,20 @@ MODEL_CLASSES = {
 def to_device(args, batch_data):
     new_batch_data = {}
     for k, v in batch_data.items():
-        if k in ['batch_mention_events', 'batch_mention_events_with_mask', 'batch_event_cluster_ids', 'batch_event_subtypes']:
+        if k in ['batch_events', 'batch_mention_events', 'batch_event_cluster_ids', 'batch_event_subtypes']:
             new_batch_data[k] = v
         elif k == 'batch_event_dists':
             new_batch_data[k] = [
                 torch.tensor(event_dists, dtype=torch.float32).to(args.device) 
                 for event_dists in v
             ]
-        elif k in ['batch_mention_events', 'batch_mention_inputs_with_mask']:
+        elif k in ['batch_inputs', 'batch_mention_inputs_with_mask']:
             new_batch_data[k] = [
                 {k_: v_.to(args.device) for k_, v_ in inputs.items()} 
                 for inputs in v
             ]
+        else:
+            raise ValueError(f'Wrong batch data key {k}')
     return new_batch_data
 
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
@@ -145,58 +147,81 @@ def train(args, train_dataset, dev_dataset, model, tokenizer, mention_tokenizer)
 
 def predict(args, document:str, events:list, mentions:list, mention_pos:list, event_dists:list, model, tokenizer, mention_tokenizer):
     assert len(events) == len(mentions) == len(mention_pos) == len(event_dists)
-    new_mentions = []
-    mention_events = []
-    new_mentions_with_mask = []
-    mention_events_with_mask = []
-    for event, mention, mention_pos in zip(events, mentions, mention_pos):
-        mention_char_start, mention_char_end = mention_pos
-        global_mention, global_mention_char_start, global_mention_char_end = cut_sent(
-            document, event['char_start'], event['char_end'], args.max_seq_length
-        )
-        encoding = tokenizer(global_mention, max_length=args.max_seq_length, truncation=True)
-        token_start = encoding.char_to_token(global_mention_char_start)
-        if not token_start:
-            token_start = encoding.char_to_token(global_mention_char_start + 1)
-        token_end = encoding.char_to_token(global_mention_char_end)
-        assert token_start and token_end
-        local_mention, local_mention_char_start, local_mention_char_end = cut_sent(
-            mention, mention_char_start, mention_char_end, args.max_mention_length
-        )
-        mention_encoding = mention_tokenizer(local_mention, max_length=args.max_mention_length, truncation=True)
-        mention_token_start = mention_encoding.char_to_token(local_mention_char_start)
-        if not mention_token_start:
-            mention_token_start = mention_encoding.char_to_token(local_mention_char_start + 1)
-        mention_token_end = mention_encoding.char_to_token(local_mention_char_end)
-        assert mention_token_start and mention_token_end
-        new_mentions.append(global_mention)
-        mention_events.append([token_start, token_end])
-        new_mentions_with_mask.append(local_mention)
-        mention_events_with_mask.append([mention_token_start, mention_token_end])
-    mention_inputs = tokenizer(
-        new_mentions, 
-        max_length=args.max_seq_length, 
-        padding=True, 
-        truncation=True, 
+    
+    def find_event_chunk_idx(chunks, event_start, event_end):
+        for idx, (start, end) in enumerate(chunks):
+            if event_start >= start and event_end < end:
+                return idx, event_start - start, event_end - start
+        return -1, None, None
+    
+    # split document into chunks
+    full_context_encoding = tokenizer(
+        document,
+        max_length=args.max_seq_length,
+        truncation=True,
+        stride=0,
+        return_overflowing_tokens=True,
+        return_offsets_mapping=True,
+        padding='max_length',
         return_tensors="pt"
     )
-    mention_inputs_with_mask = mention_tokenizer(
-        new_mentions_with_mask, 
+    offset_mapping = full_context_encoding.pop('offset_mapping')
+    full_context_encoding.pop('overflow_to_sample_mapping')
+    chunks = []
+    for offset in offset_mapping[:-1]:
+        chunks.append((offset[1][0], offset[-2][-1]))
+    chunks.append((offset_mapping[-1][1][0], len(document)))
+    chunk_texts = [document[start:end] for start, end in chunks]
+    
+    filtered_events = []
+    new_events = []
+    filtered_mentions = []
+    filtered_mention_events = []
+    filtered_dists = []
+    for event, mention, mention_pos, event_dist in zip(events, mentions, mention_pos, event_dists):
+        chunk_idx, event_chunk_start, event_chunk_end = find_event_chunk_idx(chunks, event['char_start'], event['char_end'])
+        if chunk_idx == -1:
+            continue
+        encoding = tokenizer(chunk_texts[chunk_idx], max_length=args.max_seq_length, truncation=True, padding='max_length')
+        token_start = encoding.char_to_token(event_chunk_start)
+        if not token_start:
+            token_start = encoding.char_to_token(event_chunk_start + 1)
+        token_end = encoding.char_to_token(event_chunk_end)
+        if not token_start or not token_end:
+            continue
+        mention_char_start, mention_char_end = mention_pos
+        mention, mention_char_start, mention_char_end = cut_sent(
+            mention, mention_char_start, mention_char_end, args.max_mention_length
+        )
+        mention_encoding = mention_tokenizer(mention, max_length=args.max_mention_length, truncation=True)
+        mention_token_start = mention_encoding.char_to_token(mention_char_start)
+        if not mention_token_start:
+            mention_token_start = mention_encoding.char_to_token(mention_char_start + 1)
+        mention_token_end = mention_encoding.char_to_token(mention_char_end)
+        assert mention_token_start and mention_token_end
+        offset = chunk_idx * args.max_seq_length
+        filtered_events.append([offset + token_start, offset + token_end])
+        new_events.append(event)
+        filtered_mentions.append(mention)
+        filtered_mention_events.append([mention_token_start, mention_token_end])
+        filtered_dists.append(event_dist)
+    filtered_mention_inputs_with_mask = mention_tokenizer(
+        filtered_mentions, 
         max_length=args.max_mention_length, 
         padding=True, 
         truncation=True, 
         return_tensors="pt"
     )
-    for e_idx, (e_start, e_end) in enumerate(mention_events_with_mask):
-        mention_inputs_with_mask['input_ids'][e_idx][e_start:e_end+1] = mention_tokenizer.mask_token_id
-    if len(events) == 0:
+    for e_idx, (e_start, e_end) in enumerate(filtered_mention_events):
+        filtered_mention_inputs_with_mask['input_ids'][e_idx][e_start:e_end+1] = mention_tokenizer.mask_token_id
+    if not new_events:
         return [], [], []
     inputs = {
-        'batch_mention_inputs': [mention_inputs], 
-        'batch_mention_events': [mention_events], 
-        'batch_mention_inputs_with_mask': [mention_inputs_with_mask], 
-        'batch_mention_events_with_mask': [mention_events_with_mask], 
-        'batch_event_dists': [np.asarray(event_dists)]
+        'batch_inputs': [full_context_encoding], 
+        'batch_events': [filtered_events], 
+        'batch_mention_inputs_with_mask': [filtered_mention_inputs_with_mask], 
+        'batch_mention_events': [filtered_mention_events], 
+        'batch_event_dists': [np.asarray(filtered_dists)]
     }
     inputs = to_device(args, inputs)
     with torch.no_grad():
@@ -205,9 +230,9 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, ev
     predictions = logits.argmax(dim=-1)[0].cpu().numpy().tolist()
     probabilities = torch.nn.functional.softmax(logits, dim=-1)[0].cpu().numpy().tolist()
     probabilities = [probabilities[idx][pred] for idx, pred in enumerate(predictions)]
-    if len(new_mentions) > 1:
-        assert len(predictions) == len(new_mentions) * (len(new_mentions) - 1) / 2
-    return predictions, probabilities
+    if len(new_events) > 1:
+        assert len(predictions) == len(new_events) * (len(new_events) - 1) / 2
+    return new_events, predictions, probabilities
 
 def test(args, test_dataset, model, tokenizer, mention_tokenizer, save_weights:list):
     test_dataloader = get_dataLoader(
@@ -315,7 +340,7 @@ if __name__ == '__main__':
                         e_dist = get_event_dist(event['start'], event['start'] + len(event['trigger']) - 1, sents)
                         assert e_dist is not None
                         event_dists.append(e_dist)
-                    predictions, probabilities = predict(
+                    new_events, predictions, probabilities = predict(
                         args, sample['document'], events, mentions, mention_pos, event_dists, model, tokenizer, mention_tokenizer
                     )
                     results.append({
@@ -326,7 +351,7 @@ if __name__ == '__main__':
                                 'start': char_start, 
                                 'end': char_end, 
                                 'trigger': sample['document'][char_start:char_end+1]
-                            } for char_start, char_end in events
+                            } for char_start, char_end in new_events
                         ], 
                         "pred_label": predictions, 
                         "pred_prob": probabilities

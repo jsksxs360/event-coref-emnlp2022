@@ -36,6 +36,8 @@ def to_device(args, batch_data):
                 {k_: v_.to(args.device) for k_, v_ in inputs.items()} 
                 for inputs in v
             ]
+        else:
+            raise ValueError(f'Wrong batch data key {k}')
     return new_batch_data
 
 def train_loop(args, dataloader, model, optimizer, lr_scheduler, epoch, total_loss):

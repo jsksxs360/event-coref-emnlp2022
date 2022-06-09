@@ -284,7 +284,7 @@ class ChunkBertEncoder(BertPreTrainedModel):
         self.dist_dim = args.dist_dim
         self.num_subtypes = args.num_subtypes
         self.hidden_size = config.hidden_size + encoder_config.hidden_size + args.topic_dim
-        self.encoder_dim = config.hidden_size
+        self.main_encoder_dim = config.hidden_size
         self.mention_encoder_dim = encoder_config.hidden_size
         self.loss_type = args.softmax_loss
         self.use_device = args.device
@@ -376,50 +376,60 @@ class ChunkBertEncoder(BertPreTrainedModel):
         return batch_seq_reps
 
     def forward(self, 
-        batch_mention_inputs, 
-        batch_mention_events, 
+        batch_inputs, 
+        batch_events, 
         batch_mention_inputs_with_mask, 
-        batch_mention_events_with_mask, 
+        batch_mention_events, 
         batch_event_dists, 
         batch_event_cluster_ids=None, 
         batch_event_subtypes=None
         ):
+        # concatenate chunks to document
+        sequence_output = []
+        max_document_len = 0
+        for chunk_inputs in batch_inputs:
+            chunk_outputs = self.bert(**chunk_inputs)
+            chunk_output = chunk_outputs[0]
+            chunk_output = self.dropout(chunk_output)
+            chunk_output = chunk_output.view(-1, self.main_encoder_dim)
+            max_document_len = max(max_document_len, chunk_output.size()[0])
+            sequence_output.append(chunk_output)
+        for b_idx in range(len(sequence_output)):
+            pad_length = max_document_len - sequence_output[b_idx].size()[0] if max_document_len > 0 else 1
+            sequence_output[b_idx] = torch.cat([
+                sequence_output[b_idx], 
+                torch.zeros((pad_length, self.main_encoder_dim)).to(self.use_device)
+            ], dim=0).unsqueeze(0)
+        sequence_output = torch.cat(sequence_output, dim=0)
         # construct local event mask representations
-        batch_local_event_reps, batch_local_event_mask_reps = [], []
-        for mention_inputs, mention_events, mention_mask_inputs, mention_mask_events in zip(
-            batch_mention_inputs, batch_mention_events, batch_mention_inputs_with_mask, batch_mention_events_with_mask
-        ):
-            outputs = self.bert(**mention_inputs)
-            mention_output = outputs[0]
-            mention_output = self.dropout(mention_output)
-            mention_event_list = [[event] for event in mention_events]
-            mention_event_list = torch.tensor(mention_event_list).to(self.use_device)
-            local_event_reps = self.span_extractor(mention_output, mention_event_list).squeeze(dim=1) # (event_num, dim)
+        batch_local_event_mask_reps = []
+        for mention_mask_inputs, mention_events in zip(batch_mention_inputs_with_mask, batch_mention_events):
             encoder_outputs = self.mention_encoder(**mention_mask_inputs)
             mention_mask_output = encoder_outputs[0]
             mention_mask_output = self.mention_dropout(mention_mask_output)
-            mention_mask_event_list = [[event] for event in mention_mask_events]
-            mention_mask_event_list = torch.tensor(mention_mask_event_list).to(self.use_device)
-            local_event_mask_reps = self.mention_span_extractor(mention_mask_output, mention_mask_event_list).squeeze(dim=1) # (event_num, dim)
-            batch_local_event_reps.append(local_event_reps)
+            mention_event_list = [[event] for event in mention_events]
+            mention_event_list = torch.tensor(mention_event_list).to(self.use_device)
+            local_event_mask_reps = self.mention_span_extractor(mention_mask_output, mention_event_list).squeeze(dim=1) # (event_num, dim)
             batch_local_event_mask_reps.append(local_event_mask_reps)
         # construct event pairs (event_1, event_2)
-        batch_local_event_1_reps, batch_local_event_2_reps = [], []
+        batch_event_1_list, batch_event_2_list = [], []
         batch_local_event_1_mask_reps, batch_local_event_2_mask_reps = [], []
         batch_event_1_dists, batch_event_2_dists = [], []
         max_len, batch_event_mask = 0, []
         if batch_event_cluster_ids is not None:
             batch_coref_labels = []
             batch_local_event_1_subtypes, batch_local_event_2_subtypes = [], []
-            for local_event_reps, local_event_mask_reps, event_dists, event_cluster_ids, event_subtypes in zip(
-                batch_local_event_reps, batch_local_event_mask_reps, batch_event_dists, batch_event_cluster_ids, batch_event_subtypes
+            for events, local_event_mask_reps, event_dists, event_cluster_ids, event_subtypes in zip(
+                batch_events, batch_local_event_mask_reps, batch_event_dists, batch_event_cluster_ids, batch_event_subtypes
             ):
-                event_num = local_event_mask_reps.size()[0]
+                event_1_list, event_2_list = [], []
                 event_1_idx, event_2_idx = [], []
                 coref_labels = []
                 event_1_subtypes, event_2_subtypes = [], []
-                for i in range(event_num - 1):
-                    for j in range(i + 1, event_num):
+                for i in range(len(events) - 1):
+                    for j in range(i + 1, len(events)):
+                        event_1_list.append(events[i])
+                        event_2_list.append(events[j])
                         event_1_idx.append(i)
                         event_2_idx.append(j)
                         cluster_id_1, cluster_id_2 = event_cluster_ids[i], event_cluster_ids[j]
@@ -427,12 +437,8 @@ class ChunkBertEncoder(BertPreTrainedModel):
                         event_1_subtypes.append(event_subtypes[i])
                         event_2_subtypes.append(event_subtypes[j])
                 max_len = max(max_len, len(coref_labels))
-                batch_local_event_1_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
-                )
-                batch_local_event_2_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_2_idx).to(self.use_device))
-                )
+                batch_event_1_list.append(event_1_list)
+                batch_event_2_list.append(event_2_list)
                 batch_local_event_1_mask_reps.append(
                     torch.index_select(local_event_mask_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
                 )
@@ -452,14 +458,8 @@ class ChunkBertEncoder(BertPreTrainedModel):
             # padding
             for b_idx in range(len(batch_coref_labels)):
                 pad_length = max_len - len(batch_coref_labels[b_idx]) if max_len > 0 else 1
-                batch_local_event_1_reps[b_idx] = torch.cat([
-                    batch_local_event_1_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
-                batch_local_event_2_reps[b_idx] = torch.cat([
-                    batch_local_event_2_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
+                batch_event_1_list[b_idx] += [[0, 0]] * pad_length
+                batch_event_2_list[b_idx] += [[0, 0]] * pad_length
                 batch_local_event_1_mask_reps[b_idx] = torch.cat([
                     batch_local_event_1_mask_reps[b_idx], 
                     torch.zeros((pad_length, self.mention_encoder_dim)).to(self.use_device)
@@ -481,22 +481,20 @@ class ChunkBertEncoder(BertPreTrainedModel):
                 batch_coref_labels[b_idx] += [0] * pad_length
                 batch_event_mask[b_idx] += [0] * pad_length
         else:
-            for local_event_reps, local_event_mask_reps, event_dists in zip(
-                batch_local_event_reps, batch_local_event_mask_reps, batch_event_dists
+            for events, local_event_mask_reps, event_dists in zip(
+                batch_events, batch_local_event_mask_reps, batch_event_dists
             ):
-                event_num = local_event_mask_reps.size()[0]
+                event_1_list, event_2_list = [], []
                 event_1_idx, event_2_idx = [], []
-                for i in range(event_num - 1):
-                    for j in range(i + 1, event_num):
+                for i in range(len(events) - 1):
+                    for j in range(i + 1, len(events)):
+                        event_1_list.append(events[i])
+                        event_2_list.append(events[j])
                         event_1_idx.append(i)
                         event_2_idx.append(j)
-                max_len = max(max_len, len(event_1_idx))
-                batch_local_event_1_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
-                )
-                batch_local_event_2_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_2_idx).to(self.use_device))
-                )
+                max_len = max(max_len, len(event_1_list))
+                batch_event_1_list.append(event_1_list)
+                batch_event_2_list.append(event_2_list)
                 batch_local_event_1_mask_reps.append(
                     torch.index_select(local_event_mask_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
                 )
@@ -509,18 +507,12 @@ class ChunkBertEncoder(BertPreTrainedModel):
                 batch_event_2_dists.append(
                     torch.index_select(event_dists, 0, torch.tensor(event_2_idx).to(self.use_device))
                 )
-                batch_event_mask.append([1] * len(event_1_idx))
+                batch_event_mask.append([1] * len(event_1_list))
             # padding
             for b_idx in range(len(batch_event_mask)):
                 pad_length = max_len - len(batch_event_mask[b_idx]) if max_len > 0 else 1
-                batch_local_event_1_reps[b_idx] = torch.cat([
-                    batch_local_event_1_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
-                batch_local_event_2_reps[b_idx] = torch.cat([
-                    batch_local_event_2_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
+                batch_event_1_list[b_idx] += [[0, 0]] * pad_length
+                batch_event_2_list[b_idx] += [[0, 0]] * pad_length
                 batch_local_event_1_mask_reps[b_idx] = torch.cat([
                     batch_local_event_1_mask_reps[b_idx], 
                     torch.zeros((pad_length, self.mention_encoder_dim)).to(self.use_device)
@@ -538,9 +530,12 @@ class ChunkBertEncoder(BertPreTrainedModel):
                     torch.zeros((pad_length, self.dist_dim)).to(self.use_device)
                 ], dim=0).unsqueeze(0)
                 batch_event_mask[b_idx] += [0] * pad_length
+        # extract events
+        batch_event_1 = torch.tensor(batch_event_1_list).to(self.use_device)
+        batch_event_2 = torch.tensor(batch_event_2_list).to(self.use_device)
         batch_mask = torch.tensor(batch_event_mask).to(self.use_device)
-        batch_local_event_1_reps = torch.cat(batch_local_event_1_reps, dim=0)
-        batch_local_event_2_reps = torch.cat(batch_local_event_2_reps, dim=0)
+        batch_event_1_reps = self.span_extractor(sequence_output, batch_event_1, span_indices_mask=batch_mask)
+        batch_event_2_reps = self.span_extractor(sequence_output, batch_event_2, span_indices_mask=batch_mask)
         # predict event subtype
         batch_local_event_1_mask_reps = torch.cat(batch_local_event_1_mask_reps, dim=0)
         batch_local_event_2_mask_reps = torch.cat(batch_local_event_2_mask_reps, dim=0)
@@ -551,8 +546,8 @@ class ChunkBertEncoder(BertPreTrainedModel):
         batch_event_2_dists = torch.cat(batch_event_2_dists, dim=0)
         loss_topic, batch_e1_topics, batch_e2_topics = self.topic_model(batch_event_1_dists, batch_event_2_dists, batch_mask)
         # matching & predict coref
-        batch_event_1_reps = torch.cat([batch_local_event_1_reps, batch_local_event_1_mask_reps, batch_e1_topics], dim=-1)
-        batch_event_2_reps = torch.cat([batch_local_event_2_reps, batch_local_event_2_mask_reps, batch_e2_topics], dim=-1)
+        batch_event_1_reps = torch.cat([batch_event_1_reps, batch_local_event_1_mask_reps, batch_e1_topics], dim=-1)
+        batch_event_2_reps = torch.cat([batch_event_2_reps, batch_local_event_2_mask_reps, batch_e2_topics], dim=-1)
         batch_seq_reps = self._matching_func(batch_event_1_reps, batch_event_2_reps)
         logits = self.coref_classifier(batch_seq_reps)
         # calculate loss 
@@ -591,7 +586,7 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
         self.dist_dim = args.dist_dim
         self.num_subtypes = args.num_subtypes
         self.hidden_size = config.hidden_size + encoder_config.hidden_size + args.topic_dim
-        self.encoder_dim = config.hidden_size
+        self.main_encoder_dim = config.hidden_size
         self.mention_encoder_dim = encoder_config.hidden_size
         self.loss_type = args.softmax_loss
         self.use_device = args.device
@@ -683,50 +678,60 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
         return batch_seq_reps
 
     def forward(self, 
-        batch_mention_inputs, 
-        batch_mention_events, 
+        batch_inputs, 
+        batch_events, 
         batch_mention_inputs_with_mask, 
-        batch_mention_events_with_mask, 
+        batch_mention_events, 
         batch_event_dists, 
         batch_event_cluster_ids=None, 
         batch_event_subtypes=None
         ):
+        # concatenate chunks to document
+        sequence_output = []
+        max_document_len = 0
+        for chunk_inputs in batch_inputs:
+            chunk_outputs = self.roberta(**chunk_inputs)
+            chunk_output = chunk_outputs[0]
+            chunk_output = self.dropout(chunk_output)
+            chunk_output = chunk_output.view(-1, self.main_encoder_dim)
+            max_document_len = max(max_document_len, chunk_output.size()[0])
+            sequence_output.append(chunk_output)
+        for b_idx in range(len(sequence_output)):
+            pad_length = max_document_len - sequence_output[b_idx].size()[0] if max_document_len > 0 else 1
+            sequence_output[b_idx] = torch.cat([
+                sequence_output[b_idx], 
+                torch.zeros((pad_length, self.main_encoder_dim)).to(self.use_device)
+            ], dim=0).unsqueeze(0)
+        sequence_output = torch.cat(sequence_output, dim=0)
         # construct local event mask representations
-        batch_local_event_reps, batch_local_event_mask_reps = [], []
-        for mention_inputs, mention_events, mention_mask_inputs, mention_mask_events in zip(
-            batch_mention_inputs, batch_mention_events, batch_mention_inputs_with_mask, batch_mention_events_with_mask
-        ):
-            outputs = self.roberta(**mention_inputs)
-            mention_output = outputs[0]
-            mention_output = self.dropout(mention_output)
-            mention_event_list = [[event] for event in mention_events]
-            mention_event_list = torch.tensor(mention_event_list).to(self.use_device)
-            local_event_reps = self.span_extractor(mention_output, mention_event_list).squeeze(dim=1) # (event_num, dim)
+        batch_local_event_mask_reps = []
+        for mention_mask_inputs, mention_events in zip(batch_mention_inputs_with_mask, batch_mention_events):
             encoder_outputs = self.mention_encoder(**mention_mask_inputs)
             mention_mask_output = encoder_outputs[0]
             mention_mask_output = self.mention_dropout(mention_mask_output)
-            mention_mask_event_list = [[event] for event in mention_mask_events]
-            mention_mask_event_list = torch.tensor(mention_mask_event_list).to(self.use_device)
-            local_event_mask_reps = self.mention_span_extractor(mention_mask_output, mention_mask_event_list).squeeze(dim=1) # (event_num, dim)
-            batch_local_event_reps.append(local_event_reps)
+            mention_event_list = [[event] for event in mention_events]
+            mention_event_list = torch.tensor(mention_event_list).to(self.use_device)
+            local_event_mask_reps = self.mention_span_extractor(mention_mask_output, mention_event_list).squeeze(dim=1) # (event_num, dim)
             batch_local_event_mask_reps.append(local_event_mask_reps)
         # construct event pairs (event_1, event_2)
-        batch_local_event_1_reps, batch_local_event_2_reps = [], []
+        batch_event_1_list, batch_event_2_list = [], []
         batch_local_event_1_mask_reps, batch_local_event_2_mask_reps = [], []
         batch_event_1_dists, batch_event_2_dists = [], []
         max_len, batch_event_mask = 0, []
         if batch_event_cluster_ids is not None:
             batch_coref_labels = []
             batch_local_event_1_subtypes, batch_local_event_2_subtypes = [], []
-            for local_event_reps, local_event_mask_reps, event_dists, event_cluster_ids, event_subtypes in zip(
-                batch_local_event_reps, batch_local_event_mask_reps, batch_event_dists, batch_event_cluster_ids, batch_event_subtypes
+            for events, local_event_mask_reps, event_dists, event_cluster_ids, event_subtypes in zip(
+                batch_events, batch_local_event_mask_reps, batch_event_dists, batch_event_cluster_ids, batch_event_subtypes
             ):
-                event_num = local_event_mask_reps.size()[0]
+                event_1_list, event_2_list = [], []
                 event_1_idx, event_2_idx = [], []
                 coref_labels = []
                 event_1_subtypes, event_2_subtypes = [], []
-                for i in range(event_num - 1):
-                    for j in range(i + 1, event_num):
+                for i in range(len(events) - 1):
+                    for j in range(i + 1, len(events)):
+                        event_1_list.append(events[i])
+                        event_2_list.append(events[j])
                         event_1_idx.append(i)
                         event_2_idx.append(j)
                         cluster_id_1, cluster_id_2 = event_cluster_ids[i], event_cluster_ids[j]
@@ -734,12 +739,8 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
                         event_1_subtypes.append(event_subtypes[i])
                         event_2_subtypes.append(event_subtypes[j])
                 max_len = max(max_len, len(coref_labels))
-                batch_local_event_1_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
-                )
-                batch_local_event_2_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_2_idx).to(self.use_device))
-                )
+                batch_event_1_list.append(event_1_list)
+                batch_event_2_list.append(event_2_list)
                 batch_local_event_1_mask_reps.append(
                     torch.index_select(local_event_mask_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
                 )
@@ -759,14 +760,8 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
             # padding
             for b_idx in range(len(batch_coref_labels)):
                 pad_length = max_len - len(batch_coref_labels[b_idx]) if max_len > 0 else 1
-                batch_local_event_1_reps[b_idx] = torch.cat([
-                    batch_local_event_1_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
-                batch_local_event_2_reps[b_idx] = torch.cat([
-                    batch_local_event_2_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
+                batch_event_1_list[b_idx] += [[0, 0]] * pad_length
+                batch_event_2_list[b_idx] += [[0, 0]] * pad_length
                 batch_local_event_1_mask_reps[b_idx] = torch.cat([
                     batch_local_event_1_mask_reps[b_idx], 
                     torch.zeros((pad_length, self.mention_encoder_dim)).to(self.use_device)
@@ -788,22 +783,20 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
                 batch_coref_labels[b_idx] += [0] * pad_length
                 batch_event_mask[b_idx] += [0] * pad_length
         else:
-            for local_event_reps, local_event_mask_reps, event_dists in zip(
-                batch_local_event_reps, batch_local_event_mask_reps, batch_event_dists
+            for events, local_event_mask_reps, event_dists in zip(
+                batch_events, batch_local_event_mask_reps, batch_event_dists
             ):
-                event_num = local_event_mask_reps.size()[0]
+                event_1_list, event_2_list = [], []
                 event_1_idx, event_2_idx = [], []
-                for i in range(event_num - 1):
-                    for j in range(i + 1, event_num):
+                for i in range(len(events) - 1):
+                    for j in range(i + 1, len(events)):
+                        event_1_list.append(events[i])
+                        event_2_list.append(events[j])
                         event_1_idx.append(i)
                         event_2_idx.append(j)
-                max_len = max(max_len, len(event_1_idx))
-                batch_local_event_1_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
-                )
-                batch_local_event_2_reps.append(
-                    torch.index_select(local_event_reps, 0, torch.tensor(event_2_idx).to(self.use_device))
-                )
+                max_len = max(max_len, len(event_1_list))
+                batch_event_1_list.append(event_1_list)
+                batch_event_2_list.append(event_2_list)
                 batch_local_event_1_mask_reps.append(
                     torch.index_select(local_event_mask_reps, 0, torch.tensor(event_1_idx).to(self.use_device))
                 )
@@ -816,18 +809,12 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
                 batch_event_2_dists.append(
                     torch.index_select(event_dists, 0, torch.tensor(event_2_idx).to(self.use_device))
                 )
-                batch_event_mask.append([1] * len(event_1_idx))
+                batch_event_mask.append([1] * len(event_1_list))
             # padding
             for b_idx in range(len(batch_event_mask)):
                 pad_length = max_len - len(batch_event_mask[b_idx]) if max_len > 0 else 1
-                batch_local_event_1_reps[b_idx] = torch.cat([
-                    batch_local_event_1_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
-                batch_local_event_2_reps[b_idx] = torch.cat([
-                    batch_local_event_2_reps[b_idx], 
-                    torch.zeros((pad_length, self.encoder_dim)).to(self.use_device)
-                ], dim=0).unsqueeze(0)
+                batch_event_1_list[b_idx] += [[0, 0]] * pad_length
+                batch_event_2_list[b_idx] += [[0, 0]] * pad_length
                 batch_local_event_1_mask_reps[b_idx] = torch.cat([
                     batch_local_event_1_mask_reps[b_idx], 
                     torch.zeros((pad_length, self.mention_encoder_dim)).to(self.use_device)
@@ -845,9 +832,12 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
                     torch.zeros((pad_length, self.dist_dim)).to(self.use_device)
                 ], dim=0).unsqueeze(0)
                 batch_event_mask[b_idx] += [0] * pad_length
+        # extract events
+        batch_event_1 = torch.tensor(batch_event_1_list).to(self.use_device)
+        batch_event_2 = torch.tensor(batch_event_2_list).to(self.use_device)
         batch_mask = torch.tensor(batch_event_mask).to(self.use_device)
-        batch_local_event_1_reps = torch.cat(batch_local_event_1_reps, dim=0)
-        batch_local_event_2_reps = torch.cat(batch_local_event_2_reps, dim=0)
+        batch_event_1_reps = self.span_extractor(sequence_output, batch_event_1, span_indices_mask=batch_mask)
+        batch_event_2_reps = self.span_extractor(sequence_output, batch_event_2, span_indices_mask=batch_mask)
         # predict event subtype
         batch_local_event_1_mask_reps = torch.cat(batch_local_event_1_mask_reps, dim=0)
         batch_local_event_2_mask_reps = torch.cat(batch_local_event_2_mask_reps, dim=0)
@@ -858,8 +848,8 @@ class ChunkRobertaEncoder(RobertaPreTrainedModel):
         batch_event_2_dists = torch.cat(batch_event_2_dists, dim=0)
         loss_topic, batch_e1_topics, batch_e2_topics = self.topic_model(batch_event_1_dists, batch_event_2_dists, batch_mask)
         # matching & predict coref
-        batch_event_1_reps = torch.cat([batch_local_event_1_reps, batch_local_event_1_mask_reps, batch_e1_topics], dim=-1)
-        batch_event_2_reps = torch.cat([batch_local_event_2_reps, batch_local_event_2_mask_reps, batch_e2_topics], dim=-1)
+        batch_event_1_reps = torch.cat([batch_event_1_reps, batch_local_event_1_mask_reps, batch_e1_topics], dim=-1)
+        batch_event_2_reps = torch.cat([batch_event_2_reps, batch_local_event_2_mask_reps, batch_e2_topics], dim=-1)
         batch_seq_reps = self._matching_func(batch_event_1_reps, batch_event_2_reps)
         logits = self.coref_classifier(batch_seq_reps)
         # calculate loss 
