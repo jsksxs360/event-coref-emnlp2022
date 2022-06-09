@@ -194,8 +194,7 @@ def get_event_sent(e_start, e_end, sents):
 if __name__ == '__main__':
     args = parse_args()
     if args.do_train and os.path.exists(args.output_dir) and os.listdir(args.output_dir):
-        raise ValueError(
-            f'Output directory ({args.output_dir}) already exists and is not empty.')
+        raise ValueError(f'Output directory ({args.output_dir}) already exists and is not empty.')
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'

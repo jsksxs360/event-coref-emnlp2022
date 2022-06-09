@@ -256,7 +256,7 @@ def get_dataLoader(args, dataset, tokenizer, batch_size=None, shuffle=False, col
     def collote_fn_with_mask_dist(batch_samples):
         batch_sen_1, batch_sen_2, batch_event_idx = [], [], []
         batch_e1_dists, batch_e2_dists = [], []
-        batch_subtypes, batch_label = []
+        batch_subtypes, batch_label = [], []
         for sample in batch_samples:
             sen_1, e1_char_start, e1_char_end = _cut_sent(sample['e1_sen'], sample['e1_start'], sample['e1_end'], max_mention_length)
             sen_2, e2_char_start, e2_char_end = _cut_sent(sample['e2_sen'], sample['e2_start'], sample['e2_end'], max_mention_length)

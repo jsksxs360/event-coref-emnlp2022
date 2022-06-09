@@ -199,8 +199,7 @@ def get_event_dist(e_start, e_end, sents):
 if __name__ == '__main__':
     args = parse_args()
     if args.do_train and os.path.exists(args.output_dir) and os.listdir(args.output_dir):
-        raise ValueError(
-            f'Output directory ({args.output_dir}) already exists and is not empty.')
+        raise ValueError(f'Output directory ({args.output_dir}) already exists and is not empty.')
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -214,6 +213,8 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(args.model_checkpoint, cache_dir=args.cache_dir)
     args.num_labels = 2
     args.dist_dim = VOCAB_SIZE
+    if args.do_test or args.do_predict:
+        args.batch_size = 1
     model = MODEL_CLASSES[args.model_type].from_pretrained(
         args.model_checkpoint,
         config=config,

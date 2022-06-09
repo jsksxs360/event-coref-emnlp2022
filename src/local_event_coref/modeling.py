@@ -603,7 +603,7 @@ class BertForPairwiseECwithMaskTopic(BertPreTrainedModel):
         self.bert = BertModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=self.hidden_size)
+        self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.subtype_classifier = nn.Linear(config.hidden_size, self.num_subtypes)
         self.topic_model = TOPIC_MODEL[args.topic_model](args=args)
         self.matching_style = args.matching_style
@@ -713,7 +713,7 @@ class RobertaForPairwiseECwithMaskTopic(RobertaPreTrainedModel):
         self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
-        self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=self.hidden_size)
+        self.mask_span_extractor = SelfAttentiveSpanExtractor(input_dim=config.hidden_size)
         self.subtype_classifier = nn.Linear(config.hidden_size, self.num_subtypes)
         self.topic_model = TOPIC_MODEL[args.topic_model](args=args)
         self.matching_style = args.matching_style
