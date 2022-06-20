@@ -115,7 +115,6 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
     
     total_loss = 0.
     best_f1 = 0.
-    save_weights = []
     for epoch in range(args.num_train_epochs):
         print(f"Epoch {epoch+1}/{args.num_train_epochs}\n-------------------------------")
         total_loss = train_loop(args, train_dataloader, model, optimizer, lr_scheduler, epoch, total_loss)
@@ -127,12 +126,10 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
-            save_weights.append(save_weight)
         elif 100 * dev_p > 69 and 100 * dev_r > 69:
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
-            save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")

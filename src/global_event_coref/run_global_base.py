@@ -109,7 +109,6 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
 
     total_loss = 0.
     best_f1 = 0.
-    save_weights = []
     for epoch in range(args.num_train_epochs):
         print(f"Epoch {epoch+1}/{args.num_train_epochs}\n-------------------------------")
         total_loss = train_loop(args, train_dataloader, model, optimizer, lr_scheduler, epoch, total_loss)
@@ -121,16 +120,13 @@ def train(args, train_dataset, dev_dataset, model, tokenizer):
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
-            save_weights.append(save_weight)
         elif 100 * dev_p > 69 and 100 * dev_r > 69:
             logger.info(f'saving new weights to {args.output_dir}...\n')
             save_weight = f'epoch_{epoch+1}_dev_f1_{(100*dev_f1):0.4f}_weights.bin'
             torch.save(model.state_dict(), os.path.join(args.output_dir, save_weight))
-            save_weights.append(save_weight)
         with open(os.path.join(args.output_dir, 'dev_metrics.txt'), 'at') as f:
             f.write(f'epoch_{epoch+1}\n' + json.dumps(metrics, cls=NpEncoder) + '\n\n')
     logger.info("Done!")
-    return save_weights
 
 def predict(args, document:str, events:list, model, tokenizer):
     '''
@@ -208,11 +204,10 @@ if __name__ == '__main__':
         args=args
     ).to(args.device)
     # Training
-    save_weights = []
     if args.do_train:
         train_dataset = KBPCoref(args.train_file)
         dev_dataset = KBPCoref(args.dev_file)
-        save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
+        train(args, train_dataset, dev_dataset, model, tokenizer)
     # Testing
     save_weights = [file for file in os.listdir(args.output_dir) if file.endswith('.bin')]
     if args.do_test:

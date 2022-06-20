@@ -222,11 +222,10 @@ if __name__ == '__main__':
         args=args
     ).to(args.device)
     # Training
-    save_weights = []
     if args.do_train:
         train_dataset = KBPCorefPair(args.train_file)
         dev_dataset = KBPCorefPair(args.dev_file)
-        save_weights = train(args, train_dataset, dev_dataset, model, tokenizer)
+        train(args, train_dataset, dev_dataset, model, tokenizer)
     # Testing
     save_weights = [file for file in os.listdir(args.output_dir) if file.endswith('.bin')]
     if args.do_test:
