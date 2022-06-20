@@ -179,7 +179,8 @@ def predict(args, document:str, events:list, mentions:list, mention_pos:list, ev
     filtered_mention_events = []
     filtered_dists = []
     for event, mention, mention_pos, event_dist in zip(events, mentions, mention_pos, event_dists):
-        chunk_idx, event_chunk_start, event_chunk_end = find_event_chunk_idx(chunks, event['char_start'], event['char_end'])
+        char_start, char_end = event
+        chunk_idx, event_chunk_start, event_chunk_end = find_event_chunk_idx(chunks, char_start, char_end)
         if chunk_idx == -1:
             continue
         encoding = tokenizer(chunk_texts[chunk_idx], max_length=args.max_seq_length, truncation=True, padding='max_length')

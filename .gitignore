@@ -5,7 +5,7 @@ __pycache__/
 
 cache/
 results/
-reference-coreference-scorers-v8.01/
+reference-coreference-scorers/
 
 data/LDC_TAC_KBP/
 
