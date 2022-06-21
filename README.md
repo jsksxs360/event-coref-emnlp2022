@@ -36,7 +36,7 @@ bash download_pt_models.sh
 
 This repo assumes access to the English corpora used in TAC KBP Event Nugget Detection and Coreference task, i.e. [KBP 2015](http://cairo.lti.cs.cmu.edu/kbp/2015/event/), [KBP 2016](http://cairo.lti.cs.cmu.edu/kbp/2016/event/), and [KBP 2017](). In total, they contain 648 documents, which are either newswire articles or discussion forum threads. 
 
-```json
+```
 '2015': [
     'LDC_TAC_KBP/LDC2015E29/data/', 
     'LDC_TAC_KBP/LDC2015E68/data/', 
@@ -272,6 +272,3 @@ python3 run_cluster.py \
 | Base+Prod+Cos      | 72.0 / 64.4 / 68.0 | 46.2 | 57.4 | 59.0 | 42.0 | 51.2 |
 | Base+Prod+Diff     | 70.3 / 67.1 / 68.7 | 45.0 | 56.7 | 58.9 | 41.4 | 50.5 |
 | Base+Prod+Diff+Cos | 69.5 / 65.9 / 67.6 | 44.4 | 56.5 | 58.6 | 41.2 | 50.2 |
-
-**Note:** Base ($[\boldsymbol{v}_1;\boldsymbol{v}_2]$), Prod ($\boldsymbol{v}_1\otimes\boldsymbol{v}_2$), Cos (our proposed factored multi-perspective cosine similarity), Diff ($|\boldsymbol{v}_1 - \boldsymbol{v}_2|$).
-
