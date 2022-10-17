@@ -1,12 +1,17 @@
-# event-coref
+# Improving Event Coreference Resolution Using Document-level and Topic-level Information
 
-A pipline model for event coreference resolution.
+This code was used in the paper:
+
+**"Improving Event Coreference Resolution Using Document-level and Topic-level Information"**  
+Sheng Xu, Peifeng Li and Qiaoming Zhu. EMNLP 2022.
+
+A simple pipeline model implemented in PyTorch for resolving within-document event coreference. The model was trained and evaluated on the KBP corpus.
 
 ## Set up
 
 #### Requirements
 
-Set up a virtual environment and run: 
+Set up a Python virtual environment and run: 
 
 ```bash
 python3 -m pip install -r requirements.txt
@@ -19,12 +24,13 @@ Coreference results are obtained using ofﬁcial [**Reference Coreference Scorer
 Run (from inside the repo):
 
 ```bash
+cd ./
 git clone https://github.com/conll/reference-coreference-scorers.git
 ```
 
 #### Download pretrained models
 
-Download pretrained models or model identifiers (e.g. `bert-base-cased`) from Huggingface [Model Hub](https://huggingface.co/models):
+Download the pretrained model weights (e.g. `bert-base-cased`) from Huggingface [Model Hub](https://huggingface.co/models):
 
 ```bash
 bash download_pt_models.sh
@@ -34,7 +40,7 @@ bash download_pt_models.sh
 
 #### Prepare the dataset
 
-This repo assumes access to the English corpora used in TAC KBP Event Nugget Detection and Coreference task, i.e. [KBP 2015](http://cairo.lti.cs.cmu.edu/kbp/2015/event/), [KBP 2016](http://cairo.lti.cs.cmu.edu/kbp/2016/event/), and [KBP 2017](). In total, they contain 648 documents, which are either newswire articles or discussion forum threads. 
+This repo assumes access to the English corpora used in TAC KBP Event Nugget Detection and Coreference task (i.e., [KBP 2015](http://cairo.lti.cs.cmu.edu/kbp/2015/event/), [KBP 2016](http://cairo.lti.cs.cmu.edu/kbp/2016/event/), and [KBP 2017](http://cairo.lti.cs.cmu.edu/kbp/2017/event/)). In total, they contain 648 documents, which are either newswire articles or discussion forum threads. 
 
 ```
 '2015': [
@@ -53,7 +59,7 @@ This repo assumes access to the English corpora used in TAC KBP Event Nugget Det
 ]
 ```
 
-Following ([Lu & Ng, 2021](https://aclanthology.org/2021.emnlp-main.103/)), we select LDC2015E29, E68, E73, E94 and LDC2016E64 as train set (817 docs total, 735 for training and the remaining 82 for parameter tuning), and report results on the KBP 2017 dataset.
+Following ([Lu & Ng, 2021](https://aclanthology.org/2021.emnlp-main.103/)), we select LDC2015E29, E68, E73, E94 and LDC2016E64 as train set (817 docs, 735 for training and the remaining 82 for parameter tuning), and report results on the KBP 2017 dataset.
 
 **Dataset Statistics:**
 
@@ -76,13 +82,13 @@ Then,
    python3 convert.py --kbp_data_dir $DATA_DIR
    ```
 
-   **Note:** this script will create `train.json`、`dev.json` and `test.json` in the *data* folder, as well as `train_filtered.json`、`dev_filtered.json` and `test.json` which filter same and overlapping event mentions.
+   **Note:** this script will create `train.json`、`dev.json` and `test.json` in the *data* folder, as well as `train_filtered.json`、`dev_filtered.json` and `test_filtered.json` which filter same position and overlapping event mentions.
 
 ## Training
 
 #### Trigger Detection
 
-Train a sequence labeling model using the BIO schema:
+Train a sequence labeling model for Trigger Detection using the BIO tagging schema (Run with `--do_train`):
 
 ```bash
 cd src/trigger_detection/
@@ -106,11 +112,11 @@ python3 run_td_softmax.py \
     --seed=42
 ```
 
-After training, the model weights and the evaluation results on Dev set would be saved in `OUTPUT_DIR`.
+After training, the model weights and the evaluation results on **Dev** set would be saved in `$OUTPUT_DIR`.
 
 #### Event Coreference
 
-Train the full version of our event coreference model using:
+Train the full version of our event coreference model using (Run with `--do_train`):
 
 ```bash
 cd src/global_event_coref/
@@ -141,13 +147,13 @@ python3 run_global_base_with_mask_topic.py \
     --seed=42
 ```
 
-After training, the model weights and evaluation results on Dev set would be saved in `OUTPUT_DIR`.
+After training, the model weights and evaluation results on **Dev** set would be saved in `$OUTPUT_DIR`.
 
 ## Evaluation
 
 #### Trigger Detection
 
-Run with `--do_test`:
+Run *run_td_softmax.py* with `--do_test`:
 
 ```bash
 cd src/trigger_detection/
@@ -171,11 +177,11 @@ python3 run_td_softmax.py \
     --seed=42
 ```
 
-After evaluation, the evaluation results on Test set would be saved in `OUTPUT_DIR`. Use the `--do_predict` parameter to predict subtype labels. The predicted results, i.e. `XXX_test_pred_events.json`, would be saved in `OUTPUT_DIR`. 
+After evaluation, the evaluation results on **Test** set would be saved in `$OUTPUT_DIR`. Use `--do_predict` parameter to predict subtype labels. The predicted results, i.e., `XXX_test_pred_events.json`, would be saved in `$OUTPUT_DIR`. 
 
 #### Event Coreference
 
-Run with `--do_test`:
+Run *run_global_base_with_mask_topic.py* with `--do_test`:
 
 ```bash
 cd src/global_event_coref/
@@ -206,11 +212,11 @@ python3 run_global_base_with_mask_topic.py \
     --seed=42
 ```
 
-After evaluation, the evaluation results on Test set would be saved in `OUTPUT_DIR`. Use the `--do_predict` parameter to predict coreferences for event mention pairs. The predicted coreference results, i.e. `XXX_test_pred_corefs.json`, would be saved in `OUTPUT_DIR`. 
+After evaluation, the evaluation results on **Test** set would be saved in `$OUTPUT_DIR`. Use `--do_predict` parameter to predict coreferences for event mention pairs. The predicted results, i.e., `XXX_test_pred_corefs.json`, would be saved in `$OUTPUT_DIR`. 
 
 #### Clustering
 
-Create the final event clusters using predicted pairwise results in coreference result file:
+Create the final event clusters using predicted pairwise results:
 
 ```bash
 cd src/clustering
@@ -245,7 +251,9 @@ python3 run_cluster.py \
 | BERT-large[Prod] + Local    | 69.0 / 45.5 / 54.8 | 37.6 | 55.1 | 57.1 | 38.5 | 47.1 |
 | RoBERTa-large[Prod] + Local | 71.7 / 49.9 / 58.9 | 39.0 | 55.8 | 58.0 | 39.6 | 48.1 |
 
-#### Pairwise & Chunk version
+#### Pairwise & Chunk Variants
+
+Replace Global Mention Encoder in our model with pairwise (sentence-level) encoder or chunk (segment-level) encoder.
 
 | Model                  |      Pairwise      | MUC  |  B3  | CEA  | BLA  | AVG  |
 | ---------------------- | :----------------: | :--: | :--: | :--: | :--: | :--: |
@@ -272,3 +280,8 @@ python3 run_cluster.py \
 | Base+Prod+Cos      | 72.0 / 64.4 / 68.0 | 46.2 | 57.4 | 59.0 | 42.0 | 51.2 |
 | Base+Prod+Diff     | 70.3 / 67.1 / 68.7 | 45.0 | 56.7 | 58.9 | 41.4 | 50.5 |
 | Base+Prod+Diff+Cos | 69.5 / 65.9 / 67.6 | 44.4 | 56.5 | 58.6 | 41.2 | 50.2 |
+
+## Contact info
+
+Contact [Sheng Xu](https://github.com/jsksxs360) at *[sxu@stu.suda.edu.cn](mailto:sxu@stu.suda.edu.cn)* for questions about this repository.
+
