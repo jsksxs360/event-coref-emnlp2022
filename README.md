@@ -234,6 +234,12 @@ python3 run_cluster.py \
 
 ## Results
 
+#### Download Final Model
+
+You can download the final Trigger Detection & Event Coreference models at:
+
+[https://drive.google.com/drive/folders/182jll9UZ8yqQ93Dev92XDI0v2jhN7wcw?usp=sharing](https://drive.google.com/drive/folders/182jll9UZ8yqQ93Dev92XDI0v2jhN7wcw?usp=sharing)
+
 #### Trigger Detection
 
 | Model                                                        | Micro (P / R / F1) | Macro (P / R / F1) |
