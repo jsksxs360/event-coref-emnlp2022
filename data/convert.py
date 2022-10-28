@@ -9,12 +9,12 @@ import json
 import numpy as np
 from itertools import combinations
 import argparse
-from .utils import print_data_statistic, filter_events, check_event_conflict
+from utils import print_data_statistic, filter_events, check_event_conflict
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--kbp_data_dir", default='LDC_TAC_KBP/', type=str)
-parser.add_argument("--sent_data_dir", default='', type=str)
+parser.add_argument("--sent_data_dir", default='./', type=str)
 args = parser.parse_args()
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     for dataset in ['2015', '2016', '2017']:
         logger.info(f"parsing xml files in KBP {dataset} ...")
         for filename in get_KBP_filenames(dataset):
-            doc_results = xml_parser(filename.file_path, kbp_sent_list[filename.doc_id])
+            doc_results = xml_parser(os.path.join(args.kbp_data_dir, filename.file_path), kbp_sent_list[filename.doc_id])
             docs[f'kbp_{dataset}'].append(doc_results)
         logger.info(f"Finished!")
         print_data_statistic(docs[f'kbp_{dataset}'], dataset)
