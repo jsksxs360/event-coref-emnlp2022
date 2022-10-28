@@ -40,7 +40,7 @@ bash download_pt_models.sh
 
 #### Prepare the dataset
 
-This repo assumes access to the English corpora used in TAC KBP Event Nugget Detection and Coreference task (i.e., [KBP 2015](http://cairo.lti.cs.cmu.edu/kbp/2015/event/), [KBP 2016](http://cairo.lti.cs.cmu.edu/kbp/2016/event/), and [KBP 2017](http://cairo.lti.cs.cmu.edu/kbp/2017/event/)). In total, they contain 648 documents, which are either newswire articles or discussion forum threads. 
+This repo assumes access to the English corpora used in TAC KBP Event Nugget Detection and Coreference task (i.e., [KBP 2015](http://cairo.lti.cs.cmu.edu/kbp/2015/event/), [KBP 2016](http://cairo.lti.cs.cmu.edu/kbp/2016/event/), and [KBP 2017](http://cairo.lti.cs.cmu.edu/kbp/2017/event/)). In total, they contain 648 + 169 + 167 = 984 documents, which are either newswire articles or discussion forum threads. 
 
 ```
 '2015': [
@@ -58,6 +58,12 @@ This repo assumes access to the English corpora used in TAC KBP Event Nugget Det
     'LDC_TAC_KBP/LDC2017E54/data/eng/df/'
 ]
 ```
+
+|                  | KBP 2015 | KBP 2016  | KBP 2017 |  All  |
+| ---------------- | :------: | :-------: | :------: | :---: |
+| \#Documents      |     648  |     169   |    167   |  984  |
+| \#Event mentions |   18739  |    4155   |   4375   | 27269 |
+| \#Event Clusters |   11603  |    3191   |   2963   | 17757 |
 
 Following ([Lu & Ng, 2021](https://aclanthology.org/2021.emnlp-main.103/)), we select LDC2015E29, E68, E73, E94 and LDC2016E64 as train set (817 docs, 735 for training and the remaining 82 for parameter tuning), and report results on the KBP 2017 dataset.
 
