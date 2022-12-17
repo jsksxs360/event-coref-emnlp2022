@@ -1,5 +1,5 @@
 numpy==1.22.3
-pytorch==1.11.0
+torch==1.11.0
 seqeval==1.2.2
 scikit-learn==1.1.2
 allennlp==2.9.2
