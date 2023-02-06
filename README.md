@@ -2,7 +2,7 @@
 
 This code was used in the paper:
 
-**"Improving Event Coreference Resolution Using Document-level and Topic-level Information"**  
+**"[Improving Event Coreference Resolution Using Document-level and Topic-level Information](https://aclanthology.org/2022.emnlp-main.454/)"**  
 Sheng Xu, Peifeng Li and Qiaoming Zhu. EMNLP 2022.
 
 A simple pipeline model implemented in PyTorch for resolving within-document event coreference. The model was trained and evaluated on the KBP corpus.
@@ -297,3 +297,18 @@ Replace Global Mention Encoder in our model with pairwise (sentence-level) encod
 
 Contact [Sheng Xu](https://github.com/jsksxs360) at *[sxu@stu.suda.edu.cn](mailto:sxu@stu.suda.edu.cn)* for questions about this repository.
 
+```
+@inproceedings{xu-etal-2022-improving,
+    title = "Improving Event Coreference Resolution Using Document-level and Topic-level Information",
+    author = "Xu, Sheng  and
+      Li, Peifeng  and
+      Zhu, Qiaoming",
+    booktitle = "Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing",
+    month = dec,
+    year = "2022",
+    address = "Abu Dhabi, United Arab Emirates",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2022.emnlp-main.454",
+    pages = "6765--6775"
+}
+```
