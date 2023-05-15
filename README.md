@@ -25,7 +25,7 @@ Run (from inside the repo):
 
 ```bash
 cd ./
-git clone https://github.com/conll/reference-coreference-scorers.git
+git clone git@github.com:conll/reference-coreference-scorers.git
 ```
 
 #### Download pretrained models
